@@ -328,7 +328,7 @@ async def main():
         # Inicialize a aplicação
         await application.initialize()
 
-        # Inicie o servidor webhook
+        # Inicie a aplicação
         await application.start()
 
         # Inicie o webhook
@@ -340,8 +340,9 @@ async def main():
         )
         logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
 
-        # Mantenha o bot rodando
-        await application.updater.running()
+        # Mantenha o bot rodando (não use running(), apenas aguarde indefinidamente)
+        while True:
+            await asyncio.sleep(10)  # Mantém o loop ativo
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
         if application and application.updater:
