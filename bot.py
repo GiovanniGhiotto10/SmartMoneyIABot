@@ -304,18 +304,12 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Função principal com bloqueio
+# Função principal com webhooks
 def main():
-    lock_file = 'bot.lock'
     try:
-        # Tenta adquirir o bloqueio criando ou verificando o arquivo
-        if os.path.exists(lock_file):
-            logger.error("Outra instância do bot está rodando. Encerrando.")
-            return
-        with open(lock_file, 'w') as f:
-            f.write(str(os.getpid()))  # Escreve o PID para rastreamento
-
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
+
+        # Adicione os handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("gasto", gasto))
         application.add_handler(CommandHandler("entrada", entrada))
@@ -323,13 +317,22 @@ def main():
         application.add_handler(CommandHandler("listar", listar))
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
-        logger.info("Bot iniciado com sucesso.")
-        application.run_polling()
+
+        # Configure o webhook
+        port = int(os.environ.get("PORT", 8443))
+        webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+        application.bot.set_webhook(url=webhook_url)
+
+        # Inicie o servidor webhook
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path="/webhook",
+            webhook_url=webhook_url
+        )
+        logger.info("Bot iniciado com sucesso via webhook.")
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
-    finally:
-        if os.path.exists(lock_file):
-            os.remove(lock_file)  # Remove o arquivo de bloqueio ao encerrar
 
 if __name__ == "__main__":
     main()
