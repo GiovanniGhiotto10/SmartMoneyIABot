@@ -2,7 +2,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from datetime import datetime
-import pyodbc
+import psycopg2
 from decouple import config
 
 # Configuração do logging
