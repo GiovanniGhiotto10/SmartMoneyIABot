@@ -304,8 +304,8 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Função principal com webhooks
-def main():
+# Função principal assíncrona com webhooks
+async def main():
     try:
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
@@ -318,13 +318,13 @@ def main():
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
 
-        # Configure o webhook
+        # Configure o webhook (linha 324 corrigida)
         port = int(os.environ.get("PORT", 8443))
         webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-        application.bot.set_webhook(url=webhook_url)
+        await application.bot.set_webhook(url=webhook_url)
 
         # Inicie o servidor webhook
-        application.run_webhook(
+        await application.run_webhook(
             listen="0.0.0.0",
             port=port,
             url_path="/webhook",
@@ -335,4 +335,5 @@ def main():
         logger.error(f"Erro ao iniciar o bot: {e}")
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
