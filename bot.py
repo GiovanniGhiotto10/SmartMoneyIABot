@@ -5,6 +5,7 @@ from datetime import datetime
 import psycopg2
 from decouple import config
 import os
+import asyncio
 
 # Configuração do logging
 logging.basicConfig(
@@ -307,6 +308,7 @@ def gerar_recomendacao(gastos):
 # Função principal assíncrona com webhooks
 async def main():
     try:
+        # Crie a aplicação
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
         # Adicione os handlers
@@ -318,22 +320,37 @@ async def main():
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
 
-        # Configure o webhook (linha 324 corrigida)
+        # Configure o webhook
         port = int(os.environ.get("PORT", 8443))
         webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
         await application.bot.set_webhook(url=webhook_url)
 
+        # Inicialize a aplicação
+        await application.initialize()
+
         # Inicie o servidor webhook
-        await application.run_webhook(
+        await application.start()
+
+        # Inicie o webhook
+        await application.updater.start_webhook(
             listen="0.0.0.0",
             port=port,
             url_path="/webhook",
             webhook_url=webhook_url
         )
-        logger.info("Bot iniciado com sucesso via webhook.")
+        logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
+
+        # Mantenha o bot rodando
+        await application.updater.running()
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
+        if application and application.updater:
+            await application.updater.stop()
+        if application:
+            await application.stop()
+            await application.shutdown()
+        raise
 
 if __name__ == "__main__":
-    import asyncio
+    # Execute a função principal
     asyncio.run(main())
