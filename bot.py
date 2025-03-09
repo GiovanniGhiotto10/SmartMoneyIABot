@@ -145,7 +145,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3. /resumo [MES ANO]\n"
         "4. /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]\n"
         "5. /remover ID\n"
-        "6. /listar (mostra seus gastos)"
+        "6. /listar (mostra seus gastos)\n"
+        "7. /powerbi (veja seu relatório no Power BI)"
     )
 
 # Comando /gasto
@@ -305,6 +306,13 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
+# Novo comando /powerbi
+POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
+async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)  # Converte o ID numérico do Telegram para string
+    filtered_link = f"{POWER_BI_BASE_LINK}'{user_id}'"
+    await update.message.reply_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}")
+
 # Função principal assíncrona com webhooks
 async def main():
     try:
@@ -319,6 +327,7 @@ async def main():
         application.add_handler(CommandHandler("listar", listar))
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
+        application.add_handler(CommandHandler("powerbi", send_powerbi_link))  # Adicione o novo handler
 
         # Configure o webhook
         port = int(os.environ.get("PORT", 8443))
@@ -340,9 +349,9 @@ async def main():
         )
         logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
 
-        # Mantenha o bot rodando (não use running(), apenas aguarde indefinidamente)
+        # Mantenha o bot rodando
         while True:
-            await asyncio.sleep(10)  # Mantém o loop ativo
+            await asyncio.sleep(10)
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
         if application and application.updater:
@@ -353,5 +362,4 @@ async def main():
         raise
 
 if __name__ == "__main__":
-    # Execute a função principal
     asyncio.run(main())
