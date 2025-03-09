@@ -64,7 +64,7 @@ def obter_gastos_mensais(usuario, mes, ano):
         logger.error(f"Erro ao obter gastos: {e}")
         raise
 
-# Função para obter o total de gastos mensais (usada no alerta)
+# Função para obter o total de gastos mensais
 def obter_total_gastos_mensais(usuario, mes, ano):
     try:
         with conectar() as conn:
@@ -201,156 +201,6 @@ async def verificar_limite(update: Update, usuario, mes, ano):
     except Exception as e:
         logger.error(f"Erro ao verificar limite: {e}")
 
-# Comando /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Olá! Eu sou o SmartMoneyIABot, seu assistente financeiro. Use os comandos:\n"
-        "1. /gasto VALOR [FORMA_PAGAMENTO] (escolha a categoria com botões)\n"
-        "2. /entrada VALOR DESCRICAO\n"
-        "3. /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]\n"
-        "4. /remover ID\n"
-        "5. /powerbi (veja seu relatório no Power BI)\n"
-        "6. /listar (Ver o ID)\n"
-        "7. /grafico (escolha o mês com botões)\n"
-        "8. /definirlimite VALOR (defina seu limite de gastos mensal)"
-    )
-
-# Comando /gasto (atualizado para usar botões)
-async def gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) < 2 or len(args) > 3:
-        await update.message.reply_text("Formato inválido. Use: /gasto VALOR [FORMA_PAGAMENTO]")
-        return
-    try:
-        valor = float(args[1])
-        if valor <= 0:
-            await update.message.reply_text("O valor deve ser positivo.")
-            return
-        forma_pagamento = args[2] if len(args) == 3 else None
-
-        # Armazenar o valor e forma de pagamento no contexto para uso posterior
-        context.user_data['gasto_valor'] = valor
-        context.user_data['gasto_forma_pagamento'] = forma_pagamento
-
-        # Lista de categorias predefinidas
-        categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros"]
-        keyboard = [
-            [InlineKeyboardButton(cat, callback_data=f"gasto_categoria_{cat}")]
-            for cat in categorias
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Escolha a categoria do gasto:", reply_markup=reply_markup)
-    except ValueError:
-        await update.message.reply_text("O valor deve ser numérico.")
-
-# Handler para os botões de categoria do /gasto
-async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    # Extrair a categoria do callback_data
-    if query.data.startswith("gasto_categoria_"):
-        categoria = query.data[len("gasto_categoria_"):]
-        valor = context.user_data.get('gasto_valor')
-        forma_pagamento = context.user_data.get('gasto_forma_pagamento')
-        usuario = str(query.message.chat.id)
-        data = datetime.now().strftime('%Y-%m-%d')
-
-        try:
-            salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
-            msg = f"Gasto de R${valor:.2f} na categoria '{categoria}'"
-            if forma_pagamento:
-                msg += f" ({forma_pagamento})"
-            msg += " salvo com sucesso!"
-            await query.message.reply_text(msg)
-
-            # Verificar o limite após salvar o gasto
-            mes = datetime.now().month
-            ano = datetime.now().year
-            await verificar_limite(query, usuario, mes, ano)
-
-            # Limpar os dados do contexto
-            context.user_data.pop('gasto_valor', None)
-            context.user_data.pop('gasto_forma_pagamento', None)
-        except Exception:
-            await query.message.reply_text("Erro ao salvar o gasto.")
-
-# Comando /entrada
-async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) != 3:
-        await update.message.reply_text("Formato inválido. Use: /entrada VALOR DESCRICAO")
-        return
-    try:
-        _, valor, descricao = args
-        valor = float(valor)
-        if valor <= 0:
-            await update.message.reply_text("O valor deve ser positivo.")
-            return
-        data = datetime.now().strftime('%Y-%m-%d')
-        salvar_entrada(str(update.message.chat.id), valor, descricao, data)
-        await update.message.reply_text(f"Entrada de R${valor:.2f} - {descricao} salva!")
-    except ValueError:
-        await update.message.reply_text("O valor deve ser numérico.")
-    except Exception:
-        await update.message.reply_text("Erro ao salvar a entrada.")
-
-# Comando /listar
-async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    usuario = str(update.message.chat.id)
-    try:
-        gastos = listar_gastos(usuario)
-        if gastos:
-            resposta = "Seus gastos:\n"
-            for id, valor, categoria, forma_pagamento, data in gastos:
-                fp = f" ({forma_pagamento})" if forma_pagamento else ""
-                resposta += f"ID {id}: R${valor:.2f} - {categoria}{fp} ({data})\n"
-            await update.message.reply_text(resposta)
-        else:
-            await update.message.reply_text("Nenhum gasto registrado.")
-    except Exception:
-        await update.message.reply_text("Erro ao listar gastos.")
-
-# Comando /editar
-async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) < 2 or len(args) > 5:
-        await update.message.reply_text("Formato inválido. Use: /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]")
-        return
-    try:
-        usuario = str(update.message.chat.id)
-        gasto_id = int(args[1])
-        valor = float(args[2]) if len(args) > 2 else None
-        categoria = args[3] if len(args) > 3 else None
-        forma_pagamento = args[4] if len(args) > 4 else None
-        
-        if valor is not None and valor <= 0:
-            await update.message.reply_text("O valor deve ser positivo.")
-            return
-        
-        editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
-        await update.message.reply_text(f"Gasto ID {gasto_id} editado! Use /listar para verificar.")
-    except ValueError:
-        await update.message.reply_text("ID e VALOR devem ser numéricos.")
-    except Exception:
-        await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.")
-
-# Comando /remover
-async def remover(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) != 2:
-        await update.message.reply_text("Formato inválido. Use: /remover ID")
-        return
-    try:
-        usuario = str(update.message.chat.id)
-        gasto_id = int(args[1])
-        remover_gasto(usuario, gasto_id)
-        await update.message.reply_text(f"Gasto ID {gasto_id} removido!")
-    except ValueError:
-        await update.message.reply_text("ID deve ser numérico.")
-    except Exception:
-        await update.message.reply_text("Erro ao remover o gasto ou ID não encontrado.")
-
 # Função para gerar recomendações
 def gerar_recomendacao(gastos):
     total_gastos = sum(total for _, total in gastos)
@@ -363,15 +213,211 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Comando /grafico (atualizado para usar botões)
+# Comando /start (menu interativo)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("GASTO", callback_data="start_gasto")],
+        [InlineKeyboardButton("ENTRADA", callback_data="start_entrada")],
+        [InlineKeyboardButton("LISTAR", callback_data="start_listar")],
+        [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
+        [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
+        [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")],
+        [InlineKeyboardButton("GRÁFICO", callback_data="start_grafico")],
+        [InlineKeyboardButton("DEFINIR LIMITE", callback_data="start_definirlimite")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Escolha uma opção:", reply_markup=reply_markup)
+
+# Handler para o menu inicial
+async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "start_gasto":
+        await query.message.reply_text("Por favor, insira o valor que você gastou (ex.: 100):")
+        context.user_data['state'] = 'awaiting_gasto_valor'
+    elif query.data == "start_entrada":
+        await query.message.reply_text("Por favor, insira o valor da entrada (ex.: 100) e a descrição (ex.: 'Salário'):")
+        context.user_data['state'] = 'awaiting_entrada'
+    elif query.data == "start_listar":
+        await listar(update, context)
+    elif query.data == "start_editar":
+        await query.message.reply_text("Por favor, insira o ID do gasto a editar (ex.: /editar 1):")
+        context.user_data['state'] = 'awaiting_editar_id'
+    elif query.data == "start_remover":
+        await query.message.reply_text("Por favor, insira o ID do gasto a remover (ex.: /remover 1):")
+        context.user_data['state'] = 'awaiting_remover_id'
+    elif query.data == "start_powerbi":
+        await send_powerbi_link(update, context)
+    elif query.data == "start_grafico":
+        await grafico(update, context)
+    elif query.data == "start_definirlimite":
+        await query.message.reply_text("Por favor, insira o valor do limite (ex.: 1000):")
+        context.user_data['state'] = 'awaiting_definirlimite'
+
+# Handler para processar mensagens de texto (fluxo interativo)
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state = context.user_data.get('state')
+    if not state:
+        return
+
+    usuario = str(update.message.chat.id)
+    mes = datetime.now().month
+    ano = datetime.now().year
+
+    if state == 'awaiting_gasto_valor':
+        try:
+            valor = float(update.message.text)
+            if valor <= 0:
+                await update.message.reply_text("O valor deve ser positivo. Tente novamente.")
+                return
+            context.user_data['gasto_valor'] = valor
+            # Mostrar botões de categoria
+            categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros", "Escrever Categoria"]
+            keyboard = [
+                [InlineKeyboardButton(cat, callback_data=f"gasto_categoria_{cat}") for cat in categorias[i:i+2]]
+                for i in range(0, len(categorias), 2)
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_gasto_categoria'
+        except ValueError:
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100).")
+
+    elif state == 'awaiting_gasto_categoria':
+        if update.message.text:
+            context.user_data['gasto_categoria'] = update.message.text
+            # Mostrar botões de forma de pagamento
+            formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
+            keyboard = [
+                [InlineKeyboardButton(fp, callback_data=f"gasto_forma_{fp}") for fp in formas_pagamento[i:i+2]]
+                for i in range(0, len(formas_pagamento), 2)
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_gasto_forma'
+        else:
+            await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.")
+
+    elif state == 'awaiting_entrada':
+        try:
+            parts = update.message.text.split(maxsplit=1)
+            if len(parts) != 2:
+                await update.message.reply_text("Formato inválido. Use: VALOR DESCRICAO (ex.: 100 Salário).")
+                return
+            valor = float(parts[0])
+            if valor <= 0:
+                await update.message.reply_text("O valor deve ser positivo. Tente novamente.")
+                return
+            descricao = parts[1]
+            data = datetime.now().strftime('%Y-%m-%d')
+            salvar_entrada(usuario, valor, descricao, data)
+            await update.message.reply_text(f"Entrada de R${valor:.2f} - {descricao} salva!")
+            context.user_data.pop('state', None)
+            await verificar_limite(update, usuario, mes, ano)
+        except ValueError:
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).")
+
+    elif state == 'awaiting_editar_id':
+        try:
+            gasto_id = int(update.message.text.split()[1]) if update.message.text.startswith('/editar') else int(update.message.text)
+            context.user_data['editar_id'] = gasto_id
+            await update.message.reply_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):")
+            context.user_data['state'] = 'awaiting_editar_dados'
+        except ValueError:
+            await update.message.reply_text("ID inválido. Insira um número (ex.: /editar 1).")
+
+    elif state == 'awaiting_editar_dados':
+        try:
+            parts = update.message.text.split(maxsplit=3)
+            valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
+            categoria = parts[1] if len(parts) > 1 and parts[1] else None
+            forma_pagamento = parts[2] if len(parts) > 2 and parts[2] else None
+            if valor is not None and valor <= 0:
+                await update.message.reply_text("O valor deve ser positivo.")
+                return
+            gasto_id = context.user_data['editar_id']
+            editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
+            await update.message.reply_text(f"Gasto ID {gasto_id} editado! Use /listar para verificar.")
+            context.user_data.pop('state', None)
+            context.user_data.pop('editar_id', None)
+        except ValueError:
+            await update.message.reply_text("Dados inválidos. Use: VALOR CATEGORIA FORMA (ex.: 200 Alimentação Cartão).")
+        except Exception:
+            await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.")
+
+    elif state == 'awaiting_remover_id':
+        try:
+            gasto_id = int(update.message.text.split()[1]) if update.message.text.startswith('/remover') else int(update.message.text)
+            remover_gasto(usuario, gasto_id)
+            await update.message.reply_text(f"Gasto ID {gasto_id} removido!")
+            context.user_data.pop('state', None)
+        except ValueError:
+            await update.message.reply_text("ID inválido. Insira um número (ex.: /remover 1).")
+        except Exception:
+            await update.message.reply_text("Erro ao remover o gasto ou ID não encontrado.")
+
+    elif state == 'awaiting_definirlimite':
+        try:
+            limite = float(update.message.text)
+            if limite <= 0:
+                await update.message.reply_text("O limite deve ser positivo. Tente novamente.")
+                return
+            definir_limite(usuario, limite)
+            await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!")
+            context.user_data.pop('state', None)
+        except ValueError:
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 1000).")
+
+# Handler para botões de gasto
+async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("gasto_categoria_"):
+        categoria = query.data[len("gasto_categoria_"):]
+        if categoria == "Escrever Categoria":
+            await query.message.reply_text("Por favor, escreva a categoria personalizada:")
+            context.user_data['state'] = 'awaiting_gasto_categoria'
+        else:
+            context.user_data['gasto_categoria'] = categoria
+            # Mostrar botões de forma de pagamento
+            formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
+            keyboard = [
+                [InlineKeyboardButton(fp, callback_data=f"gasto_forma_{fp}") for fp in formas_pagamento[i:i+2]]
+                for i in range(0, len(formas_pagamento), 2)
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.reply_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_gasto_forma'
+
+    elif query.data.startswith("gasto_forma_"):
+        forma_pagamento = query.data[len("gasto_forma_"):]
+        valor = context.user_data.get('gasto_valor')
+        categoria = context.user_data.get('gasto_categoria')
+        data = datetime.now().strftime('%Y-%m-%d')
+
+        try:
+            salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
+            msg = f"Gasto de R${valor:.2f} na categoria '{categoria}' ({forma_pagamento}) salvo com sucesso!"
+            await query.message.reply_text(msg)
+            context.user_data.pop('state', None)
+            context.user_data.pop('gasto_valor', None)
+            context.user_data.pop('gasto_categoria', None)
+
+            # Verificar o limite após salvar o gasto
+            mes = datetime.now().month
+            ano = datetime.now().year
+            await verificar_limite(query, usuario, mes, ano)
+        except Exception:
+            await query.message.reply_text("Erro ao salvar o gasto.")
+
+# Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Definir o mês e ano iniciais (padrão: mês atual)
     mes = datetime.now().month
     ano = datetime.now().year
     context.user_data['grafico_mes'] = mes
     context.user_data['grafico_ano'] = ano
-
-    # Mostrar os botões de navegação
     await mostrar_grafico(update, context, mes, ano)
 
 # Função para mostrar o gráfico com botões
@@ -405,11 +451,10 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
             recomendacao = gerar_recomendacao(gastos)
             resumo += f"\nRecomendação: {recomendacao}"
 
-        # Botões para navegar entre meses
         keyboard = [
             [
-                InlineKeyboardButton("⬅️ Mês Anterior", callback_data=f"grafico_prev"),
-                InlineKeyboardButton("Mês Próximo ➡️", callback_data=f"grafico_next")
+                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="grafico_prev"),
+                InlineKeyboardButton("Mês Próximo ➡️", callback_data="grafico_next")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -425,7 +470,7 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
         else:
             await update.callback_query.message.edit_text("Erro ao gerar o gráfico.")
 
-# Handler para os botões de navegação do /grafico
+# Handler para botões de navegação do /grafico
 async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -449,25 +494,6 @@ async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await mostrar_grafico(update, context, mes, ano)
 
-# Comando /definirlimite
-async def definirlimite(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) != 2:
-        await update.message.reply_text("Formato inválido. Use: /definirlimite VALOR")
-        return
-    try:
-        limite = float(args[1])
-        if limite <= 0:
-            await update.message.reply_text("O limite deve ser positivo.")
-            return
-        usuario = str(update.message.chat.id)
-        definir_limite(usuario, limite)
-        await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!")
-    except ValueError:
-        await update.message.reply_text("O valor do limite deve ser numérico.")
-    except Exception:
-        await update.message.reply_text("Erro ao definir o limite.")
-
 # Comando /powerbi
 POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
 async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -480,16 +506,11 @@ async def main():
     try:
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("gasto", gasto))
-        application.add_handler(CommandHandler("entrada", entrada))
-        application.add_handler(CommandHandler("listar", listar))
-        application.add_handler(CommandHandler("editar", editar))
-        application.add_handler(CommandHandler("remover", remover))
-        application.add_handler(CommandHandler("powerbi", send_powerbi_link))
-        application.add_handler(CommandHandler("grafico", grafico))
-        application.add_handler(CommandHandler("definirlimite", definirlimite))
-        application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_categoria_"))
+        application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
+        application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_"))
         application.add_handler(CallbackQueryHandler(button_grafico, pattern="^grafico_"))
+        application.add_handler(CommandHandler("grafico", grafico))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
         port = int(os.environ.get("PORT", 8443))
         webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
