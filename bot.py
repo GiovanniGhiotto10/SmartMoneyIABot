@@ -142,12 +142,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Olá! Eu sou o SmartMoneyIABot, seu assistente financeiro. Use os comandos:\n"
         "1. /gasto VALOR CATEGORIA [FORMA_PAGAMENTO]\n"
         "2. /entrada VALOR DESCRICAO\n"
-        "3. /resumo [MES ANO]\n"
-        "4. /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]\n"
-        "5. /remover ID\n"
-        "6. /listar (mostra seus gastos)\n"
-        "7. /powerbi (veja seu relatório no Power BI)\n"
-        "8. /grafico [MES ANO] (veja um gráfico simples)"
+        "3. /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]\n"
+        "4. /remover ID\n"
+        "5. /powerbi (veja seu relatório no Power BI)\n"
+        "6. /listar (Ver o ID)\n"
+        "7. /grafico [MES ANO] (veja um gráfico simples)"
     )
 
 # Comando /gasto
@@ -194,50 +193,6 @@ async def entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("O valor deve ser numérico.")
     except Exception:
         await update.message.reply_text("Erro ao salvar a entrada.")
-
-# Comando /resumo
-async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = update.message.text.split()
-    if len(args) == 3:
-        try:
-            mes, ano = map(int, args[1:])
-            if not (1 <= mes <= 12 and 2000 <= ano <= 9999):
-                await update.message.reply_text("Mês deve ser 1-12 e ano válido.")
-                return
-        except ValueError:
-            await update.message.reply_text("Use: /resumo MES ANO")
-            return
-    else:
-        mes = datetime.now().month
-        ano = datetime.now().year
-
-    try:
-        usuario = str(update.message.chat.id)
-        gastos = obter_gastos_mensais(usuario, mes, ano)
-        entradas = obter_entradas_mensais(usuario, mes, ano)
-        resumo = f"Resumo de {mes:02d}/{ano}:\n"
-        
-        if gastos:
-            resumo += "Gastos:\n"
-            for categoria, total in gastos:
-                resumo += f"- {categoria}: R${total:.2f}\n"
-            total_gastos = sum(total for _, total in gastos)
-            resumo += f"Total Gasto: R${total_gastos:.2f}\n"
-        else:
-            resumo += "Nenhum gasto registrado.\n"
-            total_gastos = 0
-        
-        resumo += f"\nEntradas: R${entradas:.2f}\n"
-        saldo = entradas - total_gastos
-        resumo += f"Saldo: R${saldo:.2f}\n"
-        
-        if gastos:
-            recomendacao = gerar_recomendacao(gastos)
-            resumo += f"\nRecomendação: {recomendacao}"
-        
-        await update.message.reply_text(resumo)
-    except Exception:
-        await update.message.reply_text("Erro ao gerar o resumo.")
 
 # Comando /listar
 async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -307,7 +262,7 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Novo comando /grafico
+# Comando /grafico (atualizado para as mesmas informações do /resumo, sem IDs)
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split()
     if len(args) == 3:
@@ -326,21 +281,33 @@ async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         usuario = str(update.message.chat.id)
         gastos = obter_gastos_mensais(usuario, mes, ano)
-        if not gastos:
-            await update.message.reply_text(f"Nenhum gasto registrado em {mes:02d}/{ano}.")
-            return
-
-        # Formate a mensagem com emojis e barras
-        emojis = ["🟦", "🟩", "🟪", "🟥", "🟧"]  # Cores diferentes para cada categoria
-        resposta = f"Gastos de {mes:02d}/{ano}:\n"
-        max_valor = max(total for _, total in gastos)  # Para normalizar o tamanho das barras
-        for i, (categoria, total) in enumerate(gastos):
-            emoji = emojis[i % len(emojis)]
-            # Crie uma barra proporcional ao valor (máximo de 10 caracteres)
-            bar_length = int((total / max_valor) * 10) if max_valor > 0 else 0
-            bar = "█" * bar_length
-            resposta += f"{emoji} {categoria}: R${total:.2f} {bar}\n"
-        await update.message.reply_text(resposta)
+        entradas = obter_entradas_mensais(usuario, mes, ano)
+        resumo = f"Resumo de {mes:02d}/{ano}:\n"
+        
+        if gastos:
+            resumo += "Gastos:\n"
+            emojis = ["🟦", "🟩", "🟪", "🟥", "🟧"]  # Cores diferentes para cada categoria
+            max_valor = max(total for _, total in gastos)  # Para normalizar o tamanho das barras
+            for i, (categoria, total) in enumerate(gastos):
+                emoji = emojis[i % len(emojis)]
+                bar_length = int((total / max_valor) * 10) if max_valor > 0 else 0
+                bar = "▬" * bar_length  # Usando '▬' para compatibilidade
+                resumo += f"{emoji} {categoria}: R${total:.2f} {bar}\n"
+            total_gastos = sum(total for _, total in gastos)
+            resumo += f"Total Gasto: R${total_gastos:.2f}\n"
+        else:
+            resumo += "Nenhum gasto registrado.\n"
+            total_gastos = 0
+        
+        resumo += f"\nEntradas: R${entradas:.2f}\n"
+        saldo = entradas - total_gastos
+        resumo += f"Saldo: R${saldo:.2f}\n"
+        
+        if gastos:
+            recomendacao = gerar_recomendacao(gastos)
+            resumo += f"\nRecomendação: {recomendacao}"
+        
+        await update.message.reply_text(resumo)
     except Exception as e:
         logger.error(f"Erro ao gerar gráfico: {e}")
         await update.message.reply_text("Erro ao gerar o gráfico.")
@@ -362,12 +329,11 @@ async def main():
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("gasto", gasto))
         application.add_handler(CommandHandler("entrada", entrada))
-        application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(CommandHandler("listar", listar))
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
         application.add_handler(CommandHandler("powerbi", send_powerbi_link))
-        application.add_handler(CommandHandler("grafico", grafico))  # Adicione o novo handler
+        application.add_handler(CommandHandler("grafico", grafico))
 
         # Configure o webhook
         port = int(os.environ.get("PORT", 8443))
