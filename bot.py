@@ -64,6 +64,22 @@ def obter_gastos_mensais(usuario, mes, ano):
         logger.error(f"Erro ao obter gastos: {e}")
         raise
 
+# Função para obter o total de gastos mensais (usada no alerta)
+def obter_total_gastos_mensais(usuario, mes, ano):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                SELECT SUM(valor) as total
+                FROM gastos
+                WHERE usuario = %s AND EXTRACT(MONTH FROM data) = %s AND EXTRACT(YEAR FROM data) = %s
+                ''', (usuario, mes, ano))
+                resultado = cursor.fetchone()
+                return resultado[0] if resultado[0] is not None else 0
+    except Exception as e:
+        logger.error(f"Erro ao obter total de gastos: {e}")
+        raise
+
 # Função para obter entradas mensais
 def obter_entradas_mensais(usuario, mes, ano):
     try:
@@ -136,6 +152,55 @@ def remover_gasto(usuario, gasto_id):
         logger.error(f"Erro ao remover gasto: {e}")
         raise
 
+# Função para obter o limite do usuário
+def obter_limite(usuario):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                SELECT limite
+                FROM limites
+                WHERE usuario = %s
+                ''', (usuario,))
+                resultado = cursor.fetchone()
+                return resultado[0] if resultado else None
+    except Exception as e:
+        logger.error(f"Erro ao obter limite: {e}")
+        raise
+
+# Função para definir ou atualizar o limite do usuário
+def definir_limite(usuario, limite):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                INSERT INTO limites (usuario, limite)
+                VALUES (%s, %s)
+                ON CONFLICT (usuario)
+                DO UPDATE SET limite = EXCLUDED.limite
+                ''', (usuario, limite))
+                conn.commit()
+        logger.info(f"Limite de R${limite} definido para o usuário {usuario}")
+    except Exception as e:
+        logger.error(f"Erro ao definir limite: {e}")
+        raise
+
+# Função para verificar se o limite foi excedido
+async def verificar_limite(update: Update, usuario, mes, ano):
+    try:
+        limite = obter_limite(usuario)
+        if limite is None:
+            return  # Se o usuário não tem limite definido, não faz nada
+        
+        total_gastos = obter_total_gastos_mensais(usuario, mes, ano)
+        if total_gastos > limite:
+            await update.message.reply_text(
+                f"⚠️ Alerta: Você ultrapassou seu limite de gastos mensal de R${limite:.2f}! "
+                f"Seu total de gastos em {mes:02d}/{ano} é R${total_gastos:.2f}."
+            )
+    except Exception as e:
+        logger.error(f"Erro ao verificar limite: {e}")
+
 # Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -146,10 +211,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4. /remover ID\n"
         "5. /powerbi (veja seu relatório no Power BI)\n"
         "6. /listar (Ver o ID)\n"
-        "7. /grafico [MES ANO] (veja um gráfico simples)"
+        "7. /grafico [MES ANO] (veja um gráfico simples)\n"
+        "8. /definirlimite VALOR (defina seu limite de gastos mensal)"
     )
 
-# Comando /gasto
+# Comando /gasto (atualizado para verificar o limite)
 async def gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split()
     if len(args) < 3 or len(args) > 4:
@@ -163,12 +229,18 @@ async def gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("O valor deve ser positivo.")
             return
         data = datetime.now().strftime('%Y-%m-%d')
-        salvar_gasto(str(update.message.chat.id), valor, categoria, forma_pagamento, data)
+        usuario = str(update.message.chat.id)
+        salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
         msg = f"Gasto de R${valor:.2f} na categoria '{categoria}'"
         if forma_pagamento:
             msg += f" ({forma_pagamento})"
         msg += " salvo com sucesso!"
         await update.message.reply_text(msg)
+
+        # Verificar o limite após salvar o gasto
+        mes = datetime.now().month
+        ano = datetime.now().year
+        await verificar_limite(update, usuario, mes, ano)
     except ValueError:
         await update.message.reply_text("O valor deve ser numérico.")
     except Exception:
@@ -262,7 +334,7 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Comando /grafico (atualizado para as mesmas informações do /resumo, sem IDs)
+# Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split()
     if len(args) == 3:
@@ -286,12 +358,12 @@ async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if gastos:
             resumo += "Gastos:\n"
-            emojis = ["🟦", "🟩", "🟪", "🟥", "🟧"]  # Cores diferentes para cada categoria
-            max_valor = max(total for _, total in gastos)  # Para normalizar o tamanho das barras
+            emojis = ["🟦", "🟩", "🟪", "🟥", "🟧"]
+            max_valor = max(total for _, total in gastos)
             for i, (categoria, total) in enumerate(gastos):
                 emoji = emojis[i % len(emojis)]
                 bar_length = int((total / max_valor) * 10) if max_valor > 0 else 0
-                bar = "▬" * bar_length  # Usando '▬' para compatibilidade
+                bar = "▬" * bar_length
                 resumo += f"{emoji} {categoria}: R${total:.2f} {bar}\n"
             total_gastos = sum(total for _, total in gastos)
             resumo += f"Total Gasto: R${total_gastos:.2f}\n"
@@ -312,6 +384,25 @@ async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Erro ao gerar gráfico: {e}")
         await update.message.reply_text("Erro ao gerar o gráfico.")
 
+# Novo comando /definirlimite
+async def definirlimite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = update.message.text.split()
+    if len(args) != 2:
+        await update.message.reply_text("Formato inválido. Use: /definirlimite VALOR")
+        return
+    try:
+        limite = float(args[1])
+        if limite <= 0:
+            await update.message.reply_text("O limite deve ser positivo.")
+            return
+        usuario = str(update.message.chat.id)
+        definir_limite(usuario, limite)
+        await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!")
+    except ValueError:
+        await update.message.reply_text("O valor do limite deve ser numérico.")
+    except Exception:
+        await update.message.reply_text("Erro ao definir o limite.")
+
 # Comando /powerbi
 POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
 async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -322,10 +413,7 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Função principal assíncrona com webhooks
 async def main():
     try:
-        # Crie a aplicação
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
-
-        # Adicione os handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("gasto", gasto))
         application.add_handler(CommandHandler("entrada", entrada))
@@ -334,19 +422,13 @@ async def main():
         application.add_handler(CommandHandler("remover", remover))
         application.add_handler(CommandHandler("powerbi", send_powerbi_link))
         application.add_handler(CommandHandler("grafico", grafico))
+        application.add_handler(CommandHandler("definirlimite", definirlimite))
 
-        # Configure o webhook
         port = int(os.environ.get("PORT", 8443))
         webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
         await application.bot.set_webhook(url=webhook_url)
-
-        # Inicialize a aplicação
         await application.initialize()
-
-        # Inicie a aplicação
         await application.start()
-
-        # Inicie o webhook
         await application.updater.start_webhook(
             listen="0.0.0.0",
             port=port,
@@ -354,8 +436,6 @@ async def main():
             webhook_url=webhook_url
         )
         logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
-
-        # Mantenha o bot rodando
         while True:
             await asyncio.sleep(10)
     except Exception as e:
