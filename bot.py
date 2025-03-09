@@ -213,6 +213,25 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
+# Função para listar os gastos no Telegram
+async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    usuario = str(update.callback_query.message.chat.id) if update.callback_query else str(update.message.chat.id)
+    try:
+        gastos = listar_gastos(usuario)
+        if not gastos:
+            await update.message.reply_text("Nenhum gasto registrado.") if update.message else await update.callback_query.message.reply_text("Nenhum gasto registrado.")
+            return
+        
+        mensagem = "Seus gastos:\n"
+        for gasto in gastos:
+            id_gasto, valor, categoria, forma_pagamento, data = gasto
+            mensagem += f"ID: {id_gasto} | R${valor:.2f} | {categoria} | {forma_pagamento} | {data}\n"
+        
+        await update.message.reply_text(mensagem) if update.message else await update.callback_query.message.reply_text(mensagem)
+    except Exception as e:
+        logger.error(f"Erro ao listar gastos para o usuario {usuario}: {str(e)}")
+        await update.message.reply_text("Erro ao listar os gastos.") if update.message else await update.callback_query.message.reply_text("Erro ao listar os gastos.")
+
 # Comando /start (menu interativo)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -398,6 +417,7 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = datetime.now().strftime('%Y-%m-%d')
 
         try:
+            usuario = str(query.message.chat.id)
             salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
             msg = f"Gasto de R${valor:.2f} na categoria '{categoria}' ({forma_pagamento}) salvo com sucesso!"
             await query.message.reply_text(msg)
@@ -409,8 +429,9 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mes = datetime.now().month
             ano = datetime.now().year
             await verificar_limite(query, usuario, mes, ano)
-        except Exception:
-            await query.message.reply_text("Erro ao salvar o gasto.")
+        except Exception as e:
+            logger.error(f"Erro ao salvar o gasto: {str(e)} - Dados: usuario={usuario}, valor={valor}, categoria={categoria}, forma_pagamento={forma_pagamento}, data={data}")
+            await query.message.reply_text(f"Erro ao salvar o gasto: {str(e)}")
 
 # Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -497,9 +518,14 @@ async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Comando /powerbi
 POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
 async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    filtered_link = f"{POWER_BI_BASE_LINK}'{user_id}'"
-    await update.message.reply_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}")
+    try:
+        query = update.callback_query
+        user_id = str(query.from_user.id)
+        filtered_link = f"{POWER_BI_BASE_LINK}'{user_id}'"
+        await query.message.reply_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}")
+    except Exception as e:
+        logger.error(f"Erro ao gerar link do Power BI: {str(e)}")
+        await query.message.reply_text("Erro ao gerar o link do Power BI.")
 
 # Função principal assíncrona com webhooks
 async def main():
