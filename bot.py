@@ -112,6 +112,22 @@ def listar_gastos(usuario):
         logger.error(f"Erro ao listar gastos: {e}")
         raise
 
+# Função para listar entradas
+def listar_entradas(usuario):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                SELECT id, valor, descricao, data
+                FROM entradas
+                WHERE usuario = %s
+                ORDER BY data DESC
+                ''', (usuario,))
+                return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Erro ao listar entradas: {e}")
+        raise
+
 # Função para editar um gasto
 def editar_gasto(usuario, gasto_id, valor=None, categoria=None, forma_pagamento=None):
     try:
@@ -137,6 +153,28 @@ def editar_gasto(usuario, gasto_id, valor=None, categoria=None, forma_pagamento=
         logger.error(f"Erro ao editar gasto: {e}")
         raise
 
+# Função para editar uma entrada
+def editar_entrada(usuario, entrada_id, valor=None, descricao=None):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                query = "UPDATE entradas SET "
+                params = []
+                if valor is not None:
+                    query += "valor = %s, "
+                    params.append(valor)
+                if descricao is not None:
+                    query += "descricao = %s, "
+                    params.append(descricao)
+                query = query.rstrip(", ") + " WHERE usuario = %s AND id = %s"
+                params.extend([usuario, entrada_id])
+                cursor.execute(query, params)
+                conn.commit()
+        logger.info(f"Entrada ID {entrada_id} editada por {usuario}")
+    except Exception as e:
+        logger.error(f"Erro ao editar entrada: {e}")
+        raise
+
 # Função para remover um gasto
 def remover_gasto(usuario, gasto_id):
     try:
@@ -150,6 +188,21 @@ def remover_gasto(usuario, gasto_id):
         logger.info(f"Gasto ID {gasto_id} removido por {usuario}")
     except Exception as e:
         logger.error(f"Erro ao remover gasto: {e}")
+        raise
+
+# Função para remover uma entrada
+def remover_entrada(usuario, entrada_id):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                DELETE FROM entradas
+                WHERE usuario = %s AND id = %s
+                ''', (usuario, entrada_id))
+                conn.commit()
+        logger.info(f"Entrada ID {entrada_id} removida por {usuario}")
+    except Exception as e:
+        logger.error(f"Erro ao remover entrada: {e}")
         raise
 
 # Função para obter o limite do usuário
@@ -261,22 +314,12 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "start_listar":
         await listar(update, context)
     elif query.data == "start_editar":
-        usuario = str(query.message.chat.id)
-        try:
-            gastos = listar_gastos(usuario)
-            if not gastos:
-                await query.message.reply_text("Nenhum gasto registrado para editar.")
-                return
-            keyboard = [
-                [InlineKeyboardButton(f"ID {gasto[0]}", callback_data=f"editar_gasto_{gasto[0]}")]
-                for gasto in gastos
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.reply_text("Selecione o ID do gasto para editar:", reply_markup=reply_markup)
-            context.user_data['state'] = 'awaiting_editar_selecao'
-        except Exception as e:
-            logger.error(f"Erro ao carregar gastos para edição: {str(e)}")
-            await query.message.reply_text("Erro ao carregar os gastos para edição.")
+        keyboard = [
+            [InlineKeyboardButton("EDITAR GASTO", callback_data="editar_gasto")],
+            [InlineKeyboardButton("EDITAR VALOR RECEBIDO", callback_data="editar_entrada")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("Escolha o que deseja editar:", reply_markup=reply_markup)
     elif query.data == "start_remover":
         await query.message.reply_text("Por favor, insira o ID do gasto a remover (ex.: /remover 1):")
         context.user_data['state'] = 'awaiting_remover_id'
@@ -351,7 +394,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).")
 
-    elif state == 'awaiting_editar_dados':
+    elif state == 'awaiting_editar_dados_gasto':
         try:
             parts = update.message.text.split(maxsplit=3)
             valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
@@ -369,6 +412,24 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Dados inválidos. Use: VALOR CATEGORIA FORMA (ex.: 200 Alimentação Cartão).")
         except Exception:
             await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.")
+
+    elif state == 'awaiting_editar_dados_entrada':
+        try:
+            parts = update.message.text.split(maxsplit=2)
+            valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
+            descricao = parts[1] if len(parts) > 1 and parts[1] else None
+            if valor is not None and valor <= 0:
+                await update.message.reply_text("O valor deve ser positivo.")
+                return
+            entrada_id = context.user_data['editar_id']
+            editar_entrada(usuario, entrada_id, valor, descricao)
+            await update.message.reply_text(f"Entrada ID {entrada_id} editada! Use /VER ID para verificar.")
+            context.user_data.pop('state', None)
+            context.user_data.pop('editar_id', None)
+        except ValueError:
+            await update.message.reply_text("Dados inválidos. Use: VALOR DESCRICAO (ex.: 200 Salário).")
+        except Exception:
+            await update.message.reply_text("Erro ao editar a entrada ou ID não encontrado.")
 
     elif state == 'awaiting_remover_id':
         try:
@@ -443,11 +504,51 @@ async def button_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data.startswith("editar_gasto_"):
-        gasto_id = int(query.data[len("editar_gasto_"):])
+    usuario = str(query.message.chat.id)
+
+    if query.data == "editar_gasto":
+        try:
+            gastos = listar_gastos(usuario)
+            if not gastos:
+                await query.message.reply_text("Nenhum gasto registrado para editar.")
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"editar_gasto_select_{gasto[0]}")]
+                for gasto in gastos
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.reply_text("Selecione o gasto para editar:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos para edição: {str(e)}")
+            await query.message.reply_text("Erro ao carregar os gastos para edição.")
+
+    elif query.data == "editar_entrada":
+        try:
+            entradas = listar_entradas(usuario)
+            if not entradas:
+                await query.message.reply_text("Nenhum valor recebido registrado para editar.")
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}", callback_data=f"editar_entrada_select_{entrada[0]}")]
+                for entrada in entradas
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.reply_text("Selecione o valor recebido para editar:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar entradas para edição: {str(e)}")
+            await query.message.reply_text("Erro ao carregar os valores recebidos para edição.")
+
+    elif query.data.startswith("editar_gasto_select_"):
+        gasto_id = int(query.data[len("editar_gasto_select_"):])
         context.user_data['editar_id'] = gasto_id
         await query.message.reply_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):")
-        context.user_data['state'] = 'awaiting_editar_dados'
+        context.user_data['state'] = 'awaiting_editar_dados_gasto'
+
+    elif query.data.startswith("editar_entrada_select_"):
+        entrada_id = int(query.data[len("editar_entrada_select_"):])
+        context.user_data['editar_id'] = entrada_id
+        await query.message.reply_text("Insira o novo valor (opcional) e descrição (opcional), separados por espaço (ex.: 200 Salário):")
+        context.user_data['state'] = 'awaiting_editar_dados_entrada'
 
 # Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
