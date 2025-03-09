@@ -236,13 +236,13 @@ async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("GASTO", callback_data="start_gasto")],
-        [InlineKeyboardButton("ENTRADA", callback_data="start_entrada")],
-        [InlineKeyboardButton("LISTAR", callback_data="start_listar")],
+        [InlineKeyboardButton("VALOR RECEBIDO", callback_data="start_entrada")],
+        [InlineKeyboardButton("VER ID", callback_data="start_listar")],
         [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
-        [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
+        [InlineKeyboardButton("REMOVER GASTO", callback_data="start_remover")],
         [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")],
         [InlineKeyboardButton("GRÁFICO", callback_data="start_grafico")],
-        [InlineKeyboardButton("DEFINIR LIMITE", callback_data="start_definirlimite")]
+        [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Escolha uma opção:", reply_markup=reply_markup)
@@ -261,8 +261,22 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "start_listar":
         await listar(update, context)
     elif query.data == "start_editar":
-        await query.message.reply_text("Por favor, insira o ID do gasto a editar (ex.: /editar 1):")
-        context.user_data['state'] = 'awaiting_editar_id'
+        usuario = str(query.message.chat.id)
+        try:
+            gastos = listar_gastos(usuario)
+            if not gastos:
+                await query.message.reply_text("Nenhum gasto registrado para editar.")
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]}", callback_data=f"editar_gasto_{gasto[0]}")]
+                for gasto in gastos
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.reply_text("Selecione o ID do gasto para editar:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_editar_selecao'
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos para edição: {str(e)}")
+            await query.message.reply_text("Erro ao carregar os gastos para edição.")
     elif query.data == "start_remover":
         await query.message.reply_text("Por favor, insira o ID do gasto a remover (ex.: /remover 1):")
         context.user_data['state'] = 'awaiting_remover_id'
@@ -337,15 +351,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).")
 
-    elif state == 'awaiting_editar_id':
-        try:
-            gasto_id = int(update.message.text.split()[1]) if update.message.text.startswith('/editar') else int(update.message.text)
-            context.user_data['editar_id'] = gasto_id
-            await update.message.reply_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):")
-            context.user_data['state'] = 'awaiting_editar_dados'
-        except ValueError:
-            await update.message.reply_text("ID inválido. Insira um número (ex.: /editar 1).")
-
     elif state == 'awaiting_editar_dados':
         try:
             parts = update.message.text.split(maxsplit=3)
@@ -357,7 +362,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             gasto_id = context.user_data['editar_id']
             editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
-            await update.message.reply_text(f"Gasto ID {gasto_id} editado! Use /listar para verificar.")
+            await update.message.reply_text(f"Gasto ID {gasto_id} editado! Use /VER ID para verificar.")
             context.user_data.pop('state', None)
             context.user_data.pop('editar_id', None)
         except ValueError:
@@ -433,6 +438,17 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Erro ao salvar o gasto: {str(e)} - Dados: usuario={usuario}, valor={valor}, categoria={categoria}, forma_pagamento={forma_pagamento}, data={data}")
             await query.message.reply_text(f"Erro ao salvar o gasto: {str(e)}")
 
+# Handler para botões de edição
+async def button_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("editar_gasto_"):
+        gasto_id = int(query.data[len("editar_gasto_"):])
+        context.user_data['editar_id'] = gasto_id
+        await query.message.reply_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):")
+        context.user_data['state'] = 'awaiting_editar_dados'
+
 # Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mes = datetime.now().month
@@ -475,6 +491,7 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
         keyboard = [
             [
                 InlineKeyboardButton("⬅️ Mês Anterior", callback_data="grafico_prev"),
+                InlineKeyboardButton("Voltar para o Menu", callback_data="grafico_back"),
                 InlineKeyboardButton("Mês Próximo ➡️", callback_data="grafico_next")
             ]
         ]
@@ -509,6 +526,9 @@ async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if mes > 12:
             mes = 1
             ano += 1
+    elif query.data == "grafico_back":
+        await start(update, context)
+        return
 
     context.user_data['grafico_mes'] = mes
     context.user_data['grafico_ano'] = ano
@@ -534,6 +554,7 @@ async def main():
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_"))
+        application.add_handler(CallbackQueryHandler(button_editar, pattern="^editar_"))
         application.add_handler(CallbackQueryHandler(button_grafico, pattern="^grafico_"))
         application.add_handler(CommandHandler("grafico", grafico))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
