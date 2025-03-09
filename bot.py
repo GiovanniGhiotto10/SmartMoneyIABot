@@ -146,7 +146,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4. /editar ID [VALOR] [CATEGORIA] [FORMA_PAGAMENTO]\n"
         "5. /remover ID\n"
         "6. /listar (mostra seus gastos)\n"
-        "7. /powerbi (veja seu relatório no Power BI)"
+        "7. /powerbi (veja seu relatório no Power BI)\n"
+        "8. /grafico [MES ANO] (veja um gráfico simples)"
     )
 
 # Comando /gasto
@@ -306,10 +307,48 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Novo comando /powerbi
+# Novo comando /grafico
+async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = update.message.text.split()
+    if len(args) == 3:
+        try:
+            mes, ano = map(int, args[1:])
+            if not (1 <= mes <= 12 and 2000 <= ano <= 9999):
+                await update.message.reply_text("Mês deve ser 1-12 e ano válido.")
+                return
+        except ValueError:
+            await update.message.reply_text("Use: /grafico MES ANO")
+            return
+    else:
+        mes = datetime.now().month
+        ano = datetime.now().year
+
+    try:
+        usuario = str(update.message.chat.id)
+        gastos = obter_gastos_mensais(usuario, mes, ano)
+        if not gastos:
+            await update.message.reply_text(f"Nenhum gasto registrado em {mes:02d}/{ano}.")
+            return
+
+        # Formate a mensagem com emojis e barras
+        emojis = ["🟦", "🟩", "🟪", "🟥", "🟧"]  # Cores diferentes para cada categoria
+        resposta = f"Gastos de {mes:02d}/{ano}:\n"
+        max_valor = max(total for _, total in gastos)  # Para normalizar o tamanho das barras
+        for i, (categoria, total) in enumerate(gastos):
+            emoji = emojis[i % len(emojis)]
+            # Crie uma barra proporcional ao valor (máximo de 10 caracteres)
+            bar_length = int((total / max_valor) * 10) if max_valor > 0 else 0
+            bar = "█" * bar_length
+            resposta += f"{emoji} {categoria}: R${total:.2f} {bar}\n"
+        await update.message.reply_text(resposta)
+    except Exception as e:
+        logger.error(f"Erro ao gerar gráfico: {e}")
+        await update.message.reply_text("Erro ao gerar o gráfico.")
+
+# Comando /powerbi
 POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
 async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)  # Converte o ID numérico do Telegram para string
+    user_id = str(update.message.from_user.id)
     filtered_link = f"{POWER_BI_BASE_LINK}'{user_id}'"
     await update.message.reply_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}")
 
@@ -327,7 +366,8 @@ async def main():
         application.add_handler(CommandHandler("listar", listar))
         application.add_handler(CommandHandler("editar", editar))
         application.add_handler(CommandHandler("remover", remover))
-        application.add_handler(CommandHandler("powerbi", send_powerbi_link))  # Adicione o novo handler
+        application.add_handler(CommandHandler("powerbi", send_powerbi_link))
+        application.add_handler(CommandHandler("grafico", grafico))  # Adicione o novo handler
 
         # Configure o webhook
         port = int(os.environ.get("PORT", 8443))
