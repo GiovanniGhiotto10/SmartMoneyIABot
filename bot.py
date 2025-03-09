@@ -266,31 +266,11 @@ def gerar_recomendacao(gastos):
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
 
-# Função para listar os gastos no Telegram
-async def listar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    usuario = str(update.callback_query.message.chat.id) if update.callback_query else str(update.message.chat.id)
-    try:
-        gastos = listar_gastos(usuario)
-        if not gastos:
-            await update.message.reply_text("Nenhum gasto registrado.") if update.message else await update.callback_query.message.reply_text("Nenhum gasto registrado.")
-            return
-        
-        mensagem = "Seus gastos:\n"
-        for gasto in gastos:
-            id_gasto, valor, categoria, forma_pagamento, data = gasto
-            mensagem += f"ID: {id_gasto} | R${valor:.2f} | {categoria} | {forma_pagamento} | {data}\n"
-        
-        await update.message.reply_text(mensagem) if update.message else await update.callback_query.message.reply_text(mensagem)
-    except Exception as e:
-        logger.error(f"Erro ao listar gastos para o usuario {usuario}: {str(e)}")
-        await update.message.reply_text("Erro ao listar os gastos.") if update.message else await update.callback_query.message.reply_text("Erro ao listar os gastos.")
-
 # Comando /start (menu interativo)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("GASTO", callback_data="start_gasto")],
         [InlineKeyboardButton("VALOR RECEBIDO", callback_data="start_entrada")],
-        [InlineKeyboardButton("VER ID", callback_data="start_listar")],
         [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
         [InlineKeyboardButton("REMOVER GASTO", callback_data="start_remover")],
         [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")],
@@ -311,8 +291,6 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "start_entrada":
         await query.message.reply_text("Por favor, insira o valor da entrada (ex.: 100) e a descrição (ex.: 'Salário'):")
         context.user_data['state'] = 'awaiting_entrada'
-    elif query.data == "start_listar":
-        await listar(update, context)
     elif query.data == "start_editar":
         keyboard = [
             [InlineKeyboardButton("EDITAR GASTO", callback_data="editar_gasto")],
@@ -405,7 +383,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             gasto_id = context.user_data['editar_id']
             editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
-            await update.message.reply_text(f"Gasto ID {gasto_id} editado! Use /VER ID para verificar.")
+            await update.message.reply_text(f"Gasto ID {gasto_id} editado com sucesso!")
             context.user_data.pop('state', None)
             context.user_data.pop('editar_id', None)
         except ValueError:
@@ -423,7 +401,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             entrada_id = context.user_data['editar_id']
             editar_entrada(usuario, entrada_id, valor, descricao)
-            await update.message.reply_text(f"Entrada ID {entrada_id} editada! Use /VER ID para verificar.")
+            await update.message.reply_text(f"Entrada ID {entrada_id} editada com sucesso!")
             context.user_data.pop('state', None)
             context.user_data.pop('editar_id', None)
         except ValueError:
