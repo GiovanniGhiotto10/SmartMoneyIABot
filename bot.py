@@ -273,9 +273,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("VALOR RECEBIDO", callback_data="start_entrada")],
         [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
         [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
-        [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")],
-        [InlineKeyboardButton("GRÁFICO", callback_data="start_grafico")],
-        [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")]
+        [InlineKeyboardButton("RESUMO", callback_data="start_resumo")],  # Alterado de GRÁFICO para RESUMO
+        [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")],
+        [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")]  # Movido para a última posição
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Escolha uma opção:", reply_markup=reply_markup)
@@ -319,8 +319,8 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "start_powerbi":
         await send_powerbi_link(update, context)
         context.user_data['navigation_stack'].append("start")
-    elif query.data == "start_grafico":
-        await grafico(update, context)
+    elif query.data == "start_resumo":  # Alterado de start_grafico para start_resumo
+        await resumo(update, context)
     elif query.data == "start_definirlimite":
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -771,20 +771,20 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_categoria'
-    elif previous_state == "start_grafico":
+    elif previous_state == "start_resumo":  # Alterado de start_grafico para start_resumo
         await start(query, context)
 
-# Comando /grafico
-async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Comando /resumo (alterado de /grafico)
+async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mes = datetime.now().month
     ano = datetime.now().year
-    context.user_data['grafico_mes'] = mes
-    context.user_data['grafico_ano'] = ano
+    context.user_data['resumo_mes'] = mes  # Alterado de grafico_mes para resumo_mes
+    context.user_data['resumo_ano'] = ano  # Alterado de grafico_ano para resumo_ano
     context.user_data['navigation_stack'].append("start")
-    await mostrar_grafico(update, context, mes, ano)
+    await mostrar_resumo(update, context, mes, ano)
 
-# Função para mostrar o gráfico com botões
-async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
+# Função para mostrar o resumo com botões (alterado de mostrar_grafico)
+async def mostrar_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     usuario = str(update.message.chat.id) if update.message else str(update.callback_query.message.chat.id)
     try:
         gastos = obter_gastos_mensais(usuario, mes, ano)
@@ -816,9 +816,9 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
 
         keyboard = [
             [
-                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="grafico_prev"),
+                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="resumo_prev"),  # Alterado de grafico_prev
                 InlineKeyboardButton("Voltar", callback_data="voltar"),
-                InlineKeyboardButton("Mês Próximo ➡️", callback_data="grafico_next")
+                InlineKeyboardButton("Mês Próximo ➡️", callback_data="resumo_next")  # Alterado de grafico_next
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -828,16 +828,16 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
         else:
             await update.callback_query.message.edit_text(resumo, reply_markup=reply_markup)
     except Exception as e:
-        logger.error(f"Erro ao gerar gráfico: {e}")
+        logger.error(f"Erro ao gerar resumo: {e}")
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         if update.message:
-            await update.message.reply_text("Erro ao gerar o gráfico.", reply_markup=reply_markup)
+            await update.message.reply_text("Erro ao gerar o resumo.", reply_markup=reply_markup)
         else:
-            await update.callback_query.message.edit_text("Erro ao gerar o gráfico.", reply_markup=reply_markup)
+            await update.callback_query.message.edit_text("Erro ao gerar o resumo.", reply_markup=reply_markup)
 
-# Handler para botões de navegação do /grafico
-async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Handler para botões de navegação do /resumo (alterado de button_grafico)
+async def button_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
@@ -845,24 +845,24 @@ async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_voltar(update, context)
         return
 
-    mes = context.user_data.get('grafico_mes', datetime.now().month)
-    ano = context.user_data.get('grafico_ano', datetime.now().year)
+    mes = context.user_data.get('resumo_mes', datetime.now().month)  # Alterado de grafico_mes
+    ano = context.user_data.get('resumo_ano', datetime.now().year)  # Alterado de grafico_ano
 
-    if query.data == "grafico_prev":
+    if query.data == "resumo_prev":  # Alterado de grafico_prev
         mes -= 1
         if mes < 1:
             mes = 12
             ano -= 1
-    elif query.data == "grafico_next":
+    elif query.data == "resumo_next":  # Alterado de grafico_next
         mes += 1
         if mes > 12:
             mes = 1
             ano += 1
 
-    context.user_data['grafico_mes'] = mes
-    context.user_data['grafico_ano'] = ano
+    context.user_data['resumo_mes'] = mes  # Alterado de grafico_mes
+    context.user_data['resumo_ano'] = ano  # Alterado de grafico_ano
 
-    await mostrar_grafico(update, context, mes, ano)
+    await mostrar_resumo(update, context, mes, ano)
 
 # Comando /powerbi
 POWER_BI_BASE_LINK = "https://app.powerbi.com/links/vv8SkpDKaL?filter=public%20gastos/usuario%20eq%20'"
@@ -888,8 +888,8 @@ async def main():
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
         application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_grafico, pattern="^(grafico_|voltar)"))
-        application.add_handler(CommandHandler("grafico", grafico))
+        application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))  # Alterado de button_grafico
+        application.add_handler(CommandHandler("resumo", resumo))  # Alterado de grafico
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
         port = int(os.environ.get("PORT", 8443))
