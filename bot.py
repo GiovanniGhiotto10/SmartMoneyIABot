@@ -8,6 +8,9 @@ import os
 import asyncio
 import pandas as pd
 from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.label import DataLabelList
 
 # Configuração do logging
 logging.basicConfig(
@@ -50,7 +53,7 @@ def salvar_entrada(usuario, valor, descricao, data):
         logger.error(f"Erro ao salvar entrada: {e}")
         raise
 
-# Função para obter gastos mensais
+# Função para obter gastos mensais (para resumo e planilha)
 def obter_gastos_mensais(usuario, mes, ano):
     try:
         with conectar() as conn:
@@ -98,36 +101,36 @@ def obter_entradas_mensais(usuario, mes, ano):
         logger.error(f"Erro ao obter entradas: {e}")
         raise
 
-# Função para listar gastos
-def listar_gastos(usuario):
+# Função para listar gastos de um mês específico
+def listar_gastos_mensais(usuario, mes, ano):
     try:
         with conectar() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
                 SELECT id, valor, categoria, forma_pagamento, data
                 FROM gastos
-                WHERE usuario = %s
+                WHERE usuario = %s AND EXTRACT(MONTH FROM data) = %s AND EXTRACT(YEAR FROM data) = %s
                 ORDER BY data DESC
-                ''', (usuario,))
+                ''', (usuario, mes, ano))
                 return cursor.fetchall()
     except Exception as e:
-        logger.error(f"Erro ao listar gastos: {e}")
+        logger.error(f"Erro ao listar gastos mensais: {e}")
         raise
 
-# Função para listar entradas
-def listar_entradas(usuario):
+# Função para listar entradas de um mês específico
+def listar_entradas_mensais(usuario, mes, ano):
     try:
         with conectar() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
                 SELECT id, valor, descricao, data
                 FROM entradas
-                WHERE usuario = %s
+                WHERE usuario = %s AND EXTRACT(MONTH FROM data) = %s AND EXTRACT(YEAR FROM data) = %s
                 ORDER BY data DESC
-                ''', (usuario,))
+                ''', (usuario, mes, ano))
                 return cursor.fetchall()
     except Exception as e:
-        logger.error(f"Erro ao listar entradas: {e}")
+        logger.error(f"Erro ao listar entradas mensais: {e}")
         raise
 
 # Função para editar um gasto
@@ -277,7 +280,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
         [InlineKeyboardButton("RESUMO", callback_data="start_resumo")],
         [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")],
-        [InlineKeyboardButton("PLANILHA EXCEL", callback_data="start_excel")],  # Nova opção
+        [InlineKeyboardButton("PLANILHA EXCEL", callback_data="start_excel")],
         [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -330,8 +333,64 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Por favor, insira o valor do limite (ex.: 1000):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_definirlimite'
         context.user_data['navigation_stack'].append("start")
-    elif query.data == "start_excel":  # Nova funcionalidade para planilha Excel
-        await gerar_planilha_excel(update, context)
+    elif query.data == "start_excel":
+        mes = datetime.now().month
+        ano = datetime.now().year
+        context.user_data['excel_mes'] = mes
+        context.user_data['excel_ano'] = ano
+        context.user_data['navigation_stack'].append("start")
+        await mostrar_selecao_excel(update, context, mes, ano)
+
+# Função para mostrar a seleção de mês/ano para a planilha Excel
+async def mostrar_selecao_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
+    usuario = str(update.callback_query.message.chat.id)
+    try:
+        mensagem = f"Selecione o mês e ano para gerar a planilha:\n\nMês atual: {mes:02d}/{ano}"
+        keyboard = [
+            [
+                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="excel_prev"),
+                InlineKeyboardButton("Gerar Planilha", callback_data="excel_gerar"),
+                InlineKeyboardButton("Mês Próximo ➡️", callback_data="excel_next")
+            ],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.callback_query.message.edit_text(mensagem, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Erro ao mostrar seleção de mês para Excel: {e}")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.callback_query.message.edit_text("Erro ao mostrar seleção de mês.", reply_markup=reply_markup)
+
+# Handler para botões de navegação da seleção de mês para Excel
+async def button_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "voltar":
+        await handle_voltar(update, context)
+        return
+
+    mes = context.user_data.get('excel_mes', datetime.now().month)
+    ano = context.user_data.get('excel_ano', datetime.now().year)
+
+    if query.data == "excel_prev":
+        mes -= 1
+        if mes < 1:
+            mes = 12
+            ano -= 1
+    elif query.data == "excel_next":
+        mes += 1
+        if mes > 12:
+            mes = 1
+            ano += 1
+    elif query.data == "excel_gerar":
+        await gerar_planilha_excel(update, context, mes, ano)
+        return
+
+    context.user_data['excel_mes'] = mes
+    context.user_data['excel_ano'] = ano
+    await mostrar_selecao_excel(update, context, mes, ano)
 
 # Handler para processar mensagens de texto (fluxo interativo)
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -551,7 +610,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "editar_gasto":
         try:
-            gastos = listar_gastos(usuario)
+            gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
             if not gastos:
                 keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -573,7 +632,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "editar_entrada":
         try:
-            entradas = listar_entradas(usuario)
+            entradas = listar_entradas_mensais(usuario, datetime.now().month, datetime.now().year)
             if not entradas:
                 keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -613,7 +672,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "remover_gasto":
         try:
-            gastos = listar_gastos(usuario)
+            gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
             if not gastos:
                 keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -635,7 +694,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "remover_entrada":
         try:
-            entradas = listar_entradas(usuario)
+            entradas = listar_entradas_mensais(usuario, datetime.now().month, datetime.now().year)
             if not entradas:
                 keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -659,7 +718,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gasto_id = query.data[len("remover_gasto_select_"):]
         context.user_data['remover_id'] = gasto_id
         context.user_data['remover_tipo'] = 'gasto'
-        gastos = listar_gastos(usuario)
+        gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
         gasto = next((g for g in gastos if str(g[0]) == gasto_id), None)
         if gasto:
             opcao = f"o gasto ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}"
@@ -678,7 +737,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         entrada_id = query.data[len("remover_entrada_select_"):]
         context.user_data['remover_id'] = entrada_id
         context.user_data['remover_tipo'] = 'entrada'
-        entradas = listar_entradas(usuario)
+        entradas = listar_entradas_mensais(usuario, datetime.now().month, datetime.now().year)
         entrada = next((e for e in entradas if str(e[0]) == entrada_id), None)
         if entrada:
             opcao = f"a entrada ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}"
@@ -778,6 +837,10 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['state'] = 'awaiting_gasto_categoria'
     elif previous_state == "start_resumo":
         await start(query, context)
+    elif previous_state == "start_excel":
+        mes = context.user_data.get('excel_mes', datetime.now().month)
+        ano = context.user_data.get('excel_ano', datetime.now().year)
+        await mostrar_selecao_excel(update, context, mes, ano)
 
 # Comando /resumo
 async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -885,39 +948,80 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
-# Função para gerar e enviar a planilha Excel
-async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Função para gerar e enviar a planilha Excel com gráficos e resumo
+async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     query = update.callback_query
     await query.answer()
 
     usuario = str(query.message.chat.id)
     try:
-        # Obter todos os gastos
-        gastos = listar_gastos(usuario)
+        # Obter dados do mês selecionado
+        gastos = listar_gastos_mensais(usuario, mes, ano)
+        entradas = listar_entradas_mensais(usuario, mes, ano)
+        gastos_resumo = obter_gastos_mensais(usuario, mes, ano)
+        total_entradas = obter_entradas_mensais(usuario, mes, ano)
+        total_gastos = obter_total_gastos_mensais(usuario, mes, ano)
+
+        # Criar DataFrames
         if gastos:
             df_gastos = pd.DataFrame(gastos, columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
         else:
             df_gastos = pd.DataFrame(columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
 
-        # Obter todas as entradas
-        entradas = listar_entradas(usuario)
         if entradas:
             df_entradas = pd.DataFrame(entradas, columns=['ID', 'Valor', 'Descrição', 'Data'])
         else:
             df_entradas = pd.DataFrame(columns=['ID', 'Valor', 'Descrição', 'Data'])
 
-        # Criar um arquivo Excel em memória
+        if gastos_resumo:
+            df_gastos_resumo = pd.DataFrame(gastos_resumo, columns=['Categoria', 'Total'])
+        else:
+            df_gastos_resumo = pd.DataFrame(columns=['Categoria', 'Total'])
+
+        # Criar resumo financeiro
+        df_resumo = pd.DataFrame({
+            'Descrição': ['Total de Gastos', 'Total de Entradas', 'Saldo'],
+            'Valor': [total_gastos, total_entradas, total_entradas - total_gastos]
+        })
+
+        # Criar o arquivo Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_gastos.to_excel(writer, sheet_name='Gastos', index=False)
             df_entradas.to_excel(writer, sheet_name='Entradas', index=False)
+            df_gastos_resumo.to_excel(writer, sheet_name='Gastos por Categoria', index=False)
+            df_resumo.to_excel(writer, sheet_name='Resumo', index=False)
+
+            # Adicionar gráfico de barras na aba "Gastos por Categoria"
+            workbook = writer.book
+            worksheet = workbook['Gastos por Categoria']
+
+            # Criar o gráfico de barras
+            chart = BarChart()
+            chart.title = f"Gastos por Categoria - {mes:02d}/{ano}"
+            chart.x_axis.title = "Categoria"
+            chart.y_axis.title = "Valor (R$)"
+
+            # Definir os dados para o gráfico (coluna "Total")
+            data = Reference(worksheet, min_col=2, min_row=1, max_row=len(gastos_resumo) + 1, max_col=2)
+            categories = Reference(worksheet, min_col=1, min_row=2, max_row=len(gastos_resumo) + 1)
+            chart.add_data(data, titles_from_data=True)
+            chart.set_categories(categories)
+
+            # Adicionar rótulos de dados
+            chart.datalabels = DataLabelList()
+            chart.datalabels.showVal = True
+
+            # Posicionar o gráfico na planilha
+            worksheet.add_chart(chart, "D2")
+
         output.seek(0)
 
         # Enviar o arquivo ao usuário
         await query.message.reply_document(
             document=output,
-            filename=f"relatorio_financeiro_{usuario}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            caption="Aqui está sua planilha com gastos e entradas!"
+            filename=f"relatorio_financeiro_{usuario}_{mes:02d}_{ano}.xlsx",
+            caption=f"Planilha de {mes:02d}/{ano} gerada com sucesso!"
         )
         output.close()
 
@@ -942,6 +1046,7 @@ async def main():
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
         application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
         application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))
+        application.add_handler(CallbackQueryHandler(button_excel, pattern="^(excel_|voltar)"))
         application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
