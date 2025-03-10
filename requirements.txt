@@ -1,3 +1,5 @@
 python-telegram-bot[webhooks]
 psycopg2-binary
 python-decouple
+pandas
+openpyxl
