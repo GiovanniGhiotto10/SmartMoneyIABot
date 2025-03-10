@@ -272,13 +272,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("GASTO", callback_data="start_gasto")],
         [InlineKeyboardButton("VALOR RECEBIDO", callback_data="start_entrada")],
         [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
-        [InlineKeyboardButton("REMOVER GASTO", callback_data="start_remover")],
+        [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
         [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")],
         [InlineKeyboardButton("GRÁFICO", callback_data="start_grafico")],
         [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Escolha uma opção:", reply_markup=reply_markup)
+    context.user_data['navigation_stack'] = []
 
 # Handler para o menu inicial
 async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -286,28 +287,46 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "start_gasto":
-        await query.message.reply_text("Por favor, insira o valor que você gastou (ex.: 100):")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Por favor, insira o valor que você gastou (ex.: 100):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_valor'
+        context.user_data['navigation_stack'].append("start")
     elif query.data == "start_entrada":
-        await query.message.reply_text("Por favor, insira o valor da entrada (ex.: 100) e a descrição (ex.: 'Salário'):")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Por favor, insira o valor da entrada (ex.: 100) e a descrição (ex.: 'Salário'):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_entrada'
+        context.user_data['navigation_stack'].append("start")
     elif query.data == "start_editar":
         keyboard = [
             [InlineKeyboardButton("EDITAR GASTO", callback_data="editar_gasto")],
-            [InlineKeyboardButton("EDITAR VALOR RECEBIDO", callback_data="editar_entrada")]
+            [InlineKeyboardButton("EDITAR VALOR RECEBIDO", callback_data="editar_entrada")],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("Escolha o que deseja editar:", reply_markup=reply_markup)
+        await query.message.edit_text("Escolha o que deseja editar:", reply_markup=reply_markup)
+        context.user_data['navigation_stack'].append("start")
     elif query.data == "start_remover":
-        await query.message.reply_text("Por favor, insira o ID do gasto a remover (ex.: /remover 1):")
-        context.user_data['state'] = 'awaiting_remover_id'
+        keyboard = [
+            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha o que deseja remover:", reply_markup=reply_markup)
+        context.user_data['navigation_stack'].append("start")
     elif query.data == "start_powerbi":
         await send_powerbi_link(update, context)
+        context.user_data['navigation_stack'].append("start")
     elif query.data == "start_grafico":
         await grafico(update, context)
     elif query.data == "start_definirlimite":
-        await query.message.reply_text("Por favor, insira o valor do limite (ex.: 1000):")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Por favor, insira o valor do limite (ex.: 1000):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_definirlimite'
+        context.user_data['navigation_stack'].append("start")
 
 # Handler para processar mensagens de texto (fluxo interativo)
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -323,54 +342,70 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             valor = float(update.message.text)
             if valor <= 0:
-                await update.message.reply_text("O valor deve ser positivo. Tente novamente.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("O valor deve ser positivo. Tente novamente.", reply_markup=reply_markup)
                 return
             context.user_data['gasto_valor'] = valor
-            # Mostrar botões de categoria
             categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros", "Escrever Categoria"]
             keyboard = [
                 [InlineKeyboardButton(cat, callback_data=f"gasto_categoria_{cat}") for cat in categorias[i:i+2]]
                 for i in range(0, len(categorias), 2)
             ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_categoria'
+            context.user_data['navigation_stack'].append("awaiting_gasto_valor")
         except ValueError:
-            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100).")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100).", reply_markup=reply_markup)
 
     elif state == 'awaiting_gasto_categoria':
         if update.message.text:
             context.user_data['gasto_categoria'] = update.message.text
-            # Mostrar botões de forma de pagamento
             formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
             keyboard = [
                 [InlineKeyboardButton(fp, callback_data=f"gasto_forma_{fp}") for fp in formas_pagamento[i:i+2]]
                 for i in range(0, len(formas_pagamento), 2)
             ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_forma'
+            context.user_data['navigation_stack'].append("awaiting_gasto_categoria")
         else:
-            await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.", reply_markup=reply_markup)
 
     elif state == 'awaiting_entrada':
         try:
             parts = update.message.text.split(maxsplit=1)
             if len(parts) != 2:
-                await update.message.reply_text("Formato inválido. Use: VALOR DESCRICAO (ex.: 100 Salário).")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("Formato inválido. Use: VALOR DESCRICAO (ex.: 100 Salário).", reply_markup=reply_markup)
                 return
             valor = float(parts[0])
             if valor <= 0:
-                await update.message.reply_text("O valor deve ser positivo. Tente novamente.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("O valor deve ser positivo. Tente novamente.", reply_markup=reply_markup)
                 return
             descricao = parts[1]
             data = datetime.now().strftime('%Y-%m-%d')
             salvar_entrada(usuario, valor, descricao, data)
-            await update.message.reply_text(f"Entrada de R${valor:.2f} - {descricao} salva!")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(f"Entrada de R${valor:.2f} - {descricao} salva!", reply_markup=reply_markup)
             context.user_data.pop('state', None)
             await verificar_limite(update, usuario, mes, ano)
         except ValueError:
-            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).", reply_markup=reply_markup)
 
     elif state == 'awaiting_editar_dados_gasto':
         try:
@@ -379,17 +414,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             categoria = parts[1] if len(parts) > 1 and parts[1] else None
             forma_pagamento = parts[2] if len(parts) > 2 and parts[2] else None
             if valor is not None and valor <= 0:
-                await update.message.reply_text("O valor deve ser positivo.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("O valor deve ser positivo.", reply_markup=reply_markup)
                 return
             gasto_id = context.user_data['editar_id']
             editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
-            await update.message.reply_text(f"Gasto ID {gasto_id} editado com sucesso!")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(f"Gasto ID {gasto_id} editado com sucesso!", reply_markup=reply_markup)
             context.user_data.pop('state', None)
             context.user_data.pop('editar_id', None)
         except ValueError:
-            await update.message.reply_text("Dados inválidos. Use: VALOR CATEGORIA FORMA (ex.: 200 Alimentação Cartão).")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Dados inválidos. Use: VALOR CATEGORIA FORMA (ex.: 200 Alimentação Cartão).", reply_markup=reply_markup)
         except Exception:
-            await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.", reply_markup=reply_markup)
 
     elif state == 'awaiting_editar_dados_entrada':
         try:
@@ -397,62 +440,72 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
             descricao = parts[1] if len(parts) > 1 and parts[1] else None
             if valor is not None and valor <= 0:
-                await update.message.reply_text("O valor deve ser positivo.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("O valor deve ser positivo.", reply_markup=reply_markup)
                 return
             entrada_id = context.user_data['editar_id']
             editar_entrada(usuario, entrada_id, valor, descricao)
-            await update.message.reply_text(f"Entrada ID {entrada_id} editada com sucesso!")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(f"Entrada ID {entrada_id} editada com sucesso!", reply_markup=reply_markup)
             context.user_data.pop('state', None)
             context.user_data.pop('editar_id', None)
         except ValueError:
-            await update.message.reply_text("Dados inválidos. Use: VALOR DESCRICAO (ex.: 200 Salário).")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Dados inválidos. Use: VALOR DESCRICAO (ex.: 200 Salário).", reply_markup=reply_markup)
         except Exception:
-            await update.message.reply_text("Erro ao editar a entrada ou ID não encontrado.")
-
-    elif state == 'awaiting_remover_id':
-        try:
-            gasto_id = int(update.message.text.split()[1]) if update.message.text.startswith('/remover') else int(update.message.text)
-            remover_gasto(usuario, gasto_id)
-            await update.message.reply_text(f"Gasto ID {gasto_id} removido!")
-            context.user_data.pop('state', None)
-        except ValueError:
-            await update.message.reply_text("ID inválido. Insira um número (ex.: /remover 1).")
-        except Exception:
-            await update.message.reply_text("Erro ao remover o gasto ou ID não encontrado.")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Erro ao editar a entrada ou ID não encontrado.", reply_markup=reply_markup)
 
     elif state == 'awaiting_definirlimite':
         try:
             limite = float(update.message.text)
             if limite <= 0:
-                await update.message.reply_text("O limite deve ser positivo. Tente novamente.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text("O limite deve ser positivo. Tente novamente.", reply_markup=reply_markup)
                 return
             definir_limite(usuario, limite)
-            await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!", reply_markup=reply_markup)
             context.user_data.pop('state', None)
         except ValueError:
-            await update.message.reply_text("Valor inválido. Insira um número (ex.: 1000).")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Valor inválido. Insira um número (ex.: 1000).", reply_markup=reply_markup)
 
 # Handler para botões de gasto
 async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    if query.data == "voltar":
+        await handle_voltar(update, context)
+        return
+
     if query.data.startswith("gasto_categoria_"):
         categoria = query.data[len("gasto_categoria_"):]
         if categoria == "Escrever Categoria":
-            await query.message.reply_text("Por favor, escreva a categoria personalizada:")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Por favor, escreva a categoria personalizada:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_categoria'
         else:
             context.user_data['gasto_categoria'] = categoria
-            # Mostrar botões de forma de pagamento
             formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
             keyboard = [
                 [InlineKeyboardButton(fp, callback_data=f"gasto_forma_{fp}") for fp in formas_pagamento[i:i+2]]
                 for i in range(0, len(formas_pagamento), 2)
             ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.reply_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
+            await query.message.edit_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_forma'
+            context.user_data['navigation_stack'].append("awaiting_gasto_categoria")
 
     elif query.data.startswith("gasto_forma_"):
         forma_pagamento = query.data[len("gasto_forma_"):]
@@ -464,69 +517,345 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             usuario = str(query.message.chat.id)
             salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
             msg = f"Gasto de R${valor:.2f} na categoria '{categoria}' ({forma_pagamento}) salvo com sucesso!"
-            await query.message.reply_text(msg)
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(msg, reply_markup=reply_markup)
             context.user_data.pop('state', None)
             context.user_data.pop('gasto_valor', None)
             context.user_data.pop('gasto_categoria', None)
 
-            # Verificar o limite após salvar o gasto
             mes = datetime.now().month
             ano = datetime.now().year
             await verificar_limite(query, usuario, mes, ano)
         except Exception as e:
             logger.error(f"Erro ao salvar o gasto: {str(e)} - Dados: usuario={usuario}, valor={valor}, categoria={categoria}, forma_pagamento={forma_pagamento}, data={data}")
-            await query.message.reply_text(f"Erro ao salvar o gasto: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(f"Erro ao salvar o gasto: {str(e)}", reply_markup=reply_markup)
 
-# Handler para botões de edição
-async def button_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Handler para botões de edição e remoção
+async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     usuario = str(query.message.chat.id)
 
+    if query.data == "voltar":
+        await handle_voltar(update, context)
+        return
+
     if query.data == "editar_gasto":
         try:
             gastos = listar_gastos(usuario)
             if not gastos:
-                await query.message.reply_text("Nenhum gasto registrado para editar.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum gasto registrado para editar.", reply_markup=reply_markup)
                 return
             keyboard = [
                 [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"editar_gasto_select_{gasto[0]}")]
                 for gasto in gastos
             ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.reply_text("Selecione o gasto para editar:", reply_markup=reply_markup)
+            await query.message.edit_text("Selecione o gasto para editar:", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("start_editar")
         except Exception as e:
             logger.error(f"Erro ao carregar gastos para edição: {str(e)}")
-            await query.message.reply_text("Erro ao carregar os gastos para edição.")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os gastos para edição.", reply_markup=reply_markup)
 
     elif query.data == "editar_entrada":
         try:
             entradas = listar_entradas(usuario)
             if not entradas:
-                await query.message.reply_text("Nenhum valor recebido registrado para editar.")
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum valor recebido registrado para editar.", reply_markup=reply_markup)
                 return
             keyboard = [
                 [InlineKeyboardButton(f"ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}", callback_data=f"editar_entrada_select_{entrada[0]}")]
                 for entrada in entradas
             ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.reply_text("Selecione o valor recebido para editar:", reply_markup=reply_markup)
+            await query.message.edit_text("Selecione o valor recebido para editar:", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("start_editar")
         except Exception as e:
             logger.error(f"Erro ao carregar entradas para edição: {str(e)}")
-            await query.message.reply_text("Erro ao carregar os valores recebidos para edição.")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os valores recebidos para edição.", reply_markup=reply_markup)
 
     elif query.data.startswith("editar_gasto_select_"):
         gasto_id = int(query.data[len("editar_gasto_select_"):])
         context.user_data['editar_id'] = gasto_id
-        await query.message.reply_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Insira o novo valor (opcional), categoria (opcional) e forma de pagamento (opcional), separados por espaço (ex.: 200 Alimentação Cartão):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_editar_dados_gasto'
+        context.user_data['navigation_stack'].append("editar_gasto")
 
     elif query.data.startswith("editar_entrada_select_"):
         entrada_id = int(query.data[len("editar_entrada_select_"):])
         context.user_data['editar_id'] = entrada_id
-        await query.message.reply_text("Insira o novo valor (opcional) e descrição (opcional), separados por espaço (ex.: 200 Salário):")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Insira o novo valor (opcional) e descrição (opcional), separados por espaço (ex.: 200 Salário):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_editar_dados_entrada'
+        context.user_data['navigation_stack'].append("editar_entrada")
+
+    elif query.data == "remover_gasto":
+        try:
+            gastos = listar_gastos(usuario)
+            if not gastos:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum gasto registrado para remover.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"remover_gasto_select_{gasto[0]}")]
+                for gasto in gastos
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o gasto para remover:", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("start_remover")
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos para remoção: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os gastos para remoção.", reply_markup=reply_markup)
+
+    elif query.data == "remover_entrada":
+        try:
+            entradas = listar_entradas(usuario)
+            if not entradas:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum valor recebido registrado para remover.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}", callback_data=f"remover_entrada_select_{entrada[0]}")]
+                for entrada in entradas
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o valor recebido para remover:", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("start_remover")
+        except Exception as e:
+            logger.error(f"Erro ao carregar entradas para remoção: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os valores recebidos para remoção.", reply_markup=reply_markup)
+
+    elif query.data.startswith("remover_gasto_select_"):
+        gasto_id = int(query.data[len("remover_gasto_select_"):])
+        context.user_data['remover_id'] = gasto_id
+        context.user_data['remover_tipo'] = 'gasto'
+        gastos = listar_gastos(usuario)
+        gasto = next((g for g in gastos if g[0] == gasto_id), None)
+        if gasto:
+            opcao = f"o gasto ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}"
+            keyboard = [
+                [
+                    InlineKeyboardButton("SIM", callback_data=f"confirmar_remover_sim"),
+                    InlineKeyboardButton("NÃO", callback_data=f"confirmar_remover_nao")
+                ],
+                [InlineKeyboardButton("Voltar", callback_data="voltar")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(f"Você tem certeza que deseja remover {opcao}?", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("remover_gasto")
+
+    elif query.data.startswith("remover_entrada_select_"):
+        entrada_id = int(query.data[len("remover_entrada_select_"):])
+        context.user_data['remover_id'] = entrada_id
+        context.user_data['remover_tipo'] = 'entrada'
+        entradas = listar_entradas(usuario)
+        entrada = next((e for e in entradas if e[0] == entrada_id), None)
+        if entrada:
+            opcao = f"a entrada ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}"
+            keyboard = [
+                [
+                    InlineKeyboardButton("SIM", callback_data=f"confirmar_remover_sim"),
+                    InlineKeyboardButton("NÃO", callback_data=f"confirmar_remover_nao")
+                ],
+                [InlineKeyboardButton("Voltar", callback_data="voltar")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(f"Você tem certeza que deseja remover {opcao}?", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("remover_entrada")
+
+    elif query.data == "confirmar_remover_sim":
+        try:
+            remover_id = context.user_data.get('remover_id')
+            remover_tipo = context.user_data.get('remover_tipo')
+            if remover_tipo == 'gasto':
+                remover_gasto(usuario, remover_id)
+                msg = f"Gasto ID {remover_id} removido com sucesso!"
+            elif remover_tipo == 'entrada':
+                remover_entrada(usuario, remover_id)
+                msg = f"Entrada ID {remover_id} removida com sucesso!"
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(msg, reply_markup=reply_markup)
+            context.user_data.pop('remover_id', None)
+            context.user_data.pop('remover_tipo', None)
+        except Exception as e:
+            logger.error(f"Erro ao remover: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao remover o item.", reply_markup=reply_markup)
+
+    elif query.data == "confirmar_remover_nao":
+        keyboard = [
+            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha o que deseja remover:", reply_markup=reply_markup)
+        context.user_data['navigation_stack'].append("start_remover")
+        context.user_data.pop('remover_id', None)
+        context.user_data.pop('remover_tipo', None)
+
+# Função para lidar com o botão "Voltar"
+async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not context.user_data.get('navigation_stack'):
+        await start(query, context)
+        return
+
+    previous_state = context.user_data['navigation_stack'].pop()
+
+    if previous_state == "start":
+        await start(query, context)
+    elif previous_state == "start_editar":
+        keyboard = [
+            [InlineKeyboardButton("EDITAR GASTO", callback_data="editar_gasto")],
+            [InlineKeyboardButton("EDITAR VALOR RECEBIDO", callback_data="editar_entrada")],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha o que deseja editar:", reply_markup=reply_markup)
+    elif previous_state == "start_remover":
+        keyboard = [
+            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
+            [InlineKeyboardButton("Voltar", callback_data="voltar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha o que deseja remover:", reply_markup=reply_markup)
+    elif previous_state == "editar_gasto":
+        await button_action(query, context, "editar_gasto")
+    elif previous_state == "editar_entrada":
+        await button_action(query, context, "editar_entrada")
+    elif previous_state == "remover_gasto":
+        await button_action(query, context, "remover_gasto")
+    elif previous_state == "remover_entrada":
+        await button_action(query, context, "remover_entrada")
+    elif previous_state == "awaiting_gasto_valor":
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Por favor, insira o valor que você gastou (ex.: 100):", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_valor'
+    elif previous_state == "awaiting_gasto_categoria":
+        categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros", "Escrever Categoria"]
+        keyboard = [
+            [InlineKeyboardButton(cat, callback_data=f"gasto_categoria_{cat}") for cat in categorias[i:i+2]]
+            for i in range(0, len(categorias), 2)
+        ]
+        keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_categoria'
+    elif previous_state == "start_grafico":
+        await grafico(query, context)
+
+async def button_action(query: Update, context: ContextTypes.DEFAULT_TYPE, action: str):
+    usuario = str(query.message.chat.id)
+    if action == "editar_gasto":
+        try:
+            gastos = listar_gastos(usuario)
+            if not gastos:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum gasto registrado para editar.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"editar_gasto_select_{gasto[0]}")]
+                for gasto in gastos
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o gasto para editar:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos para edição: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os gastos para edição.", reply_markup=reply_markup)
+    elif action == "editar_entrada":
+        try:
+            entradas = listar_entradas(usuario)
+            if not entradas:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum valor recebido registrado para editar.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}", callback_data=f"editar_entrada_select_{entrada[0]}")]
+                for entrada in entradas
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o valor recebido para editar:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar entradas para edição: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os valores recebidos para edição.", reply_markup=reply_markup)
+    elif action == "remover_gasto":
+        try:
+            gastos = listar_gastos(usuario)
+            if not gastos:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum gasto registrado para remover.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"remover_gasto_select_{gasto[0]}")]
+                for gasto in gastos
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o gasto para remover:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos para remoção: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os gastos para remoção.", reply_markup=reply_markup)
+    elif action == "remover_entrada":
+        try:
+            entradas = listar_entradas(usuario)
+            if not entradas:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum valor recebido registrado para remover.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {entrada[0]} - R${entrada[1]:.2f} - {entrada[2]}", callback_data=f"remover_entrada_select_{entrada[0]}")]
+                for entrada in entradas
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o valor recebido para remover:", reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Erro ao carregar entradas para remoção: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os valores recebidos para remoção.", reply_markup=reply_markup)
 
 # Comando /grafico
 async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -534,6 +863,7 @@ async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ano = datetime.now().year
     context.user_data['grafico_mes'] = mes
     context.user_data['grafico_ano'] = ano
+    context.user_data['navigation_stack'].append("start_grafico")
     await mostrar_grafico(update, context, mes, ano)
 
 # Função para mostrar o gráfico com botões
@@ -570,7 +900,7 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
         keyboard = [
             [
                 InlineKeyboardButton("⬅️ Mês Anterior", callback_data="grafico_prev"),
-                InlineKeyboardButton("Voltar para o Menu", callback_data="grafico_back"),
+                InlineKeyboardButton("Voltar", callback_data="voltar"),
                 InlineKeyboardButton("Mês Próximo ➡️", callback_data="grafico_next")
             ]
         ]
@@ -582,15 +912,21 @@ async def mostrar_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE, me
             await update.callback_query.message.edit_text(resumo, reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"Erro ao gerar gráfico: {e}")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         if update.message:
-            await update.message.reply_text("Erro ao gerar o gráfico.")
+            await update.message.reply_text("Erro ao gerar o gráfico.", reply_markup=reply_markup)
         else:
-            await update.callback_query.message.edit_text("Erro ao gerar o gráfico.")
+            await update.callback_query.message.edit_text("Erro ao gerar o gráfico.", reply_markup=reply_markup)
 
 # Handler para botões de navegação do /grafico
 async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    if query.data == "voltar":
+        await handle_voltar(update, context)
+        return
 
     mes = context.user_data.get('grafico_mes', datetime.now().month)
     ano = context.user_data.get('grafico_ano', datetime.now().year)
@@ -605,9 +941,6 @@ async def button_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if mes > 12:
             mes = 1
             ano += 1
-    elif query.data == "grafico_back":
-        await start(update, context)
-        return
 
     context.user_data['grafico_mes'] = mes
     context.user_data['grafico_ano'] = ano
@@ -621,10 +954,14 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         user_id = str(query.from_user.id)
         filtered_link = f"{POWER_BI_BASE_LINK}'{user_id}'"
-        await query.message.reply_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(f"Veja seu relatório (faça login no Power BI): {filtered_link}", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"Erro ao gerar link do Power BI: {str(e)}")
-        await query.message.reply_text("Erro ao gerar o link do Power BI.")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
 # Função principal assíncrona com webhooks
 async def main():
@@ -632,9 +969,9 @@ async def main():
         application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
-        application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_"))
-        application.add_handler(CallbackQueryHandler(button_editar, pattern="^editar_"))
-        application.add_handler(CallbackQueryHandler(button_grafico, pattern="^grafico_"))
+        application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
+        application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
+        application.add_handler(CallbackQueryHandler(button_grafico, pattern="^(grafico_|voltar)"))
         application.add_handler(CommandHandler("grafico", grafico))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
