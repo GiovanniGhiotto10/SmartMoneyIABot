@@ -6,6 +6,8 @@ import psycopg2
 from decouple import config
 import os
 import asyncio
+import pandas as pd
+from io import BytesIO
 
 # Configuração do logging
 logging.basicConfig(
@@ -273,9 +275,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("VALOR RECEBIDO", callback_data="start_entrada")],
         [InlineKeyboardButton("EDITAR", callback_data="start_editar")],
         [InlineKeyboardButton("REMOVER", callback_data="start_remover")],
-        [InlineKeyboardButton("RESUMO", callback_data="start_resumo")],  # Alterado de GRÁFICO para RESUMO
+        [InlineKeyboardButton("RESUMO", callback_data="start_resumo")],
         [InlineKeyboardButton("DEFINIR LIMITE DE GASTO", callback_data="start_definirlimite")],
-        [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")]  # Movido para a última posição
+        [InlineKeyboardButton("PLANILHA EXCEL", callback_data="start_excel")],  # Nova opção
+        [InlineKeyboardButton("POWER BI", callback_data="start_powerbi")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Escolha uma opção:", reply_markup=reply_markup)
@@ -319,7 +322,7 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "start_powerbi":
         await send_powerbi_link(update, context)
         context.user_data['navigation_stack'].append("start")
-    elif query.data == "start_resumo":  # Alterado de start_grafico para start_resumo
+    elif query.data == "start_resumo":
         await resumo(update, context)
     elif query.data == "start_definirlimite":
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
@@ -327,6 +330,8 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Por favor, insira o valor do limite (ex.: 1000):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_definirlimite'
         context.user_data['navigation_stack'].append("start")
+    elif query.data == "start_excel":  # Nova funcionalidade para planilha Excel
+        await gerar_planilha_excel(update, context)
 
 # Handler para processar mensagens de texto (fluxo interativo)
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -771,19 +776,19 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_categoria'
-    elif previous_state == "start_resumo":  # Alterado de start_grafico para start_resumo
+    elif previous_state == "start_resumo":
         await start(query, context)
 
-# Comando /resumo (alterado de /grafico)
+# Comando /resumo
 async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mes = datetime.now().month
     ano = datetime.now().year
-    context.user_data['resumo_mes'] = mes  # Alterado de grafico_mes para resumo_mes
-    context.user_data['resumo_ano'] = ano  # Alterado de grafico_ano para resumo_ano
+    context.user_data['resumo_mes'] = mes
+    context.user_data['resumo_ano'] = ano
     context.user_data['navigation_stack'].append("start")
     await mostrar_resumo(update, context, mes, ano)
 
-# Função para mostrar o resumo com botões (alterado de mostrar_grafico)
+# Função para mostrar o resumo com botões
 async def mostrar_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     usuario = str(update.message.chat.id) if update.message else str(update.callback_query.message.chat.id)
     try:
@@ -816,9 +821,9 @@ async def mostrar_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE, mes
 
         keyboard = [
             [
-                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="resumo_prev"),  # Alterado de grafico_prev
+                InlineKeyboardButton("⬅️ Mês Anterior", callback_data="resumo_prev"),
                 InlineKeyboardButton("Voltar", callback_data="voltar"),
-                InlineKeyboardButton("Mês Próximo ➡️", callback_data="resumo_next")  # Alterado de grafico_next
+                InlineKeyboardButton("Mês Próximo ➡️", callback_data="resumo_next")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -836,7 +841,7 @@ async def mostrar_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE, mes
         else:
             await update.callback_query.message.edit_text("Erro ao gerar o resumo.", reply_markup=reply_markup)
 
-# Handler para botões de navegação do /resumo (alterado de button_grafico)
+# Handler para botões de navegação do /resumo
 async def button_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -845,22 +850,22 @@ async def button_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_voltar(update, context)
         return
 
-    mes = context.user_data.get('resumo_mes', datetime.now().month)  # Alterado de grafico_mes
-    ano = context.user_data.get('resumo_ano', datetime.now().year)  # Alterado de grafico_ano
+    mes = context.user_data.get('resumo_mes', datetime.now().month)
+    ano = context.user_data.get('resumo_ano', datetime.now().year)
 
-    if query.data == "resumo_prev":  # Alterado de grafico_prev
+    if query.data == "resumo_prev":
         mes -= 1
         if mes < 1:
             mes = 12
             ano -= 1
-    elif query.data == "resumo_next":  # Alterado de grafico_next
+    elif query.data == "resumo_next":
         mes += 1
         if mes > 12:
             mes = 1
             ano += 1
 
-    context.user_data['resumo_mes'] = mes  # Alterado de grafico_mes
-    context.user_data['resumo_ano'] = ano  # Alterado de grafico_ano
+    context.user_data['resumo_mes'] = mes
+    context.user_data['resumo_ano'] = ano
 
     await mostrar_resumo(update, context, mes, ano)
 
@@ -880,6 +885,54 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
+# Função para gerar e enviar a planilha Excel
+async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    usuario = str(query.message.chat.id)
+    try:
+        # Obter todos os gastos
+        gastos = listar_gastos(usuario)
+        if gastos:
+            df_gastos = pd.DataFrame(gastos, columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
+        else:
+            df_gastos = pd.DataFrame(columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
+
+        # Obter todas as entradas
+        entradas = listar_entradas(usuario)
+        if entradas:
+            df_entradas = pd.DataFrame(entradas, columns=['ID', 'Valor', 'Descrição', 'Data'])
+        else:
+            df_entradas = pd.DataFrame(columns=['ID', 'Valor', 'Descrição', 'Data'])
+
+        # Criar um arquivo Excel em memória
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_gastos.to_excel(writer, sheet_name='Gastos', index=False)
+            df_entradas.to_excel(writer, sheet_name='Entradas', index=False)
+        output.seek(0)
+
+        # Enviar o arquivo ao usuário
+        await query.message.reply_document(
+            document=output,
+            filename=f"relatorio_financeiro_{usuario}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            caption="Aqui está sua planilha com gastos e entradas!"
+        )
+        output.close()
+
+        # Adicionar botão "Voltar"
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
+        context.user_data['navigation_stack'].append("start")
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar planilha Excel: {e}")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
+
 # Função principal assíncrona com webhooks
 async def main():
     try:
@@ -888,8 +941,8 @@ async def main():
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
         application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))  # Alterado de button_grafico
-        application.add_handler(CommandHandler("resumo", resumo))  # Alterado de grafico
+        application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))
+        application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
         port = int(os.environ.get("PORT", 8443))
