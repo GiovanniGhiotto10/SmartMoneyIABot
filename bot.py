@@ -1040,7 +1040,10 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
 # Função principal assíncrona com webhooks
 async def main():
     try:
-        application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
+        # Construir a aplicação com o token fornecido
+        application = Application.builder().token("7585573573:AAHC-v1EwpHHiBCJ5JSINejrMTdKJRIbqr4").build()
+
+        # Adicionar handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
@@ -1050,8 +1053,13 @@ async def main():
         application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-        port = int(os.environ.get("PORT", 8443))
-        webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+        # Configuração do webhook
+        port = int(os.environ.get("PORT", 8443))  # Porta padrão 8443, ajustável pelo Render
+        hostname = "smartmoneyiabot.onrender.com"  # Apenas o domínio
+        webhook_url = f"https://{hostname}/webhook"
+        logger.info(f"Definindo URL do webhook: {webhook_url}")
+
+        # Configurar e iniciar o webhook
         await application.bot.set_webhook(url=webhook_url)
         await application.initialize()
         await application.start()
@@ -1061,17 +1069,18 @@ async def main():
             url_path="/webhook",
             webhook_url=webhook_url
         )
-        logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
+
+        logger.info(f"Bot iniciado com sucesso via webhook na porta {port}.")
+        
+        # Manter a aplicação rodando
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(3600)  # Dorme por 1 hora para reduzir uso de CPU
+
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
-        if application and application.updater:
-            await application.updater.stop()
-        if application:
+        if 'application' in locals():
+            if application.updater:
+                await application.updater.stop()
             await application.stop()
             await application.shutdown()
         raise
-
-if __name__ == "__main__":
-    asyncio.run(main())
