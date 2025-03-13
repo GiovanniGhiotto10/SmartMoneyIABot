@@ -11,6 +11,7 @@ from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.label import DataLabelList
+from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
 # Configuração do logging
 logging.basicConfig(
@@ -948,7 +949,7 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
-# Função para gerar e enviar a planilha Excel com gráficos e resumo
+# Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
 async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     query = update.callback_query
     await query.answer()
@@ -987,32 +988,76 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         # Criar o arquivo Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_gastos.to_excel(writer, sheet_name='Gastos', index=False)
-            df_entradas.to_excel(writer, sheet_name='Entradas', index=False)
-            df_gastos_resumo.to_excel(writer, sheet_name='Gastos por Categoria', index=False)
-            df_resumo.to_excel(writer, sheet_name='Resumo', index=False)
+            df_gastos.to_excel(writer, sheet_name='Gastos', index=False, startrow=2)
+            df_entradas.to_excel(writer, sheet_name='Entradas', index=False, startrow=2)
+            df_gastos_resumo.to_excel(writer, sheet_name='Gastos por Categoria', index=False, startrow=2)
+            df_resumo.to_excel(writer, sheet_name='Resumo', index=False, startrow=2)
+
+            workbook = writer.book
+            # Definir estilos
+            header_fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            total_font = Font(bold=True)
+            cell_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                                 top=Side(style='thin'), bottom=Side(style='thin'))
+            negative_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+
+            # Formatar todas as abas
+            for sheet_name in ['Gastos', 'Entradas', 'Gastos por Categoria', 'Resumo']:
+                worksheet = workbook[sheet_name]
+
+                # Adicionar título personalizado
+                worksheet['A1'] = f"Relatório Financeiro - Usuário {usuario} - {mes:02d}/{ano}"
+                worksheet['A1'].font = Font(size=14, bold=True)
+                worksheet['A1'].alignment = Alignment(horizontal='center')
+                # Ajustar a largura do título para abranger várias colunas
+                if sheet_name == 'Gastos':
+                    worksheet.merge_cells('A1:E1')
+                elif sheet_name == 'Entradas':
+                    worksheet.merge_cells('A1:D1')
+                elif sheet_name == 'Gastos por Categoria':
+                    worksheet.merge_cells('A1:B1')
+                elif sheet_name == 'Resumo':
+                    worksheet.merge_cells('A1:B1')
+
+                # Formatar cabeçalho da tabela
+                for cell in worksheet[3:3]:  # Linha 3 é o cabeçalho (startrow=2)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = cell_border
+
+                # Adicionar bordas e ajustar largura das colunas
+                for row in worksheet.rows:
+                    for cell in row:
+                        cell.border = cell_border
+                        # Ajustar largura da coluna
+                        column_letter = cell.column_letter
+                        worksheet.column_dimensions[column_letter].auto_size = True
+
+                # Destacar valores negativos e formatar totais
+                if sheet_name == 'Resumo':
+                    # Destacar saldo negativo
+                    for row in worksheet['B5:B5']:  # Linha do saldo (startrow=2, linha 5 é o saldo)
+                        for cell in row:
+                            if isinstance(cell.value, (int, float)) and cell.value < 0:
+                                cell.fill = negative_fill
+                    # Formatar totais em negrito
+                    for row in worksheet['B4:B5']:  # Total de Entradas e Saldo
+                        for cell in row:
+                            cell.font = total_font
 
             # Adicionar gráfico de barras na aba "Gastos por Categoria"
-            workbook = writer.book
             worksheet = workbook['Gastos por Categoria']
-
-            # Criar o gráfico de barras
             chart = BarChart()
             chart.title = f"Gastos por Categoria - {mes:02d}/{ano}"
             chart.x_axis.title = "Categoria"
             chart.y_axis.title = "Valor (R$)"
-
-            # Definir os dados para o gráfico (coluna "Total")
-            data = Reference(worksheet, min_col=2, min_row=1, max_row=len(gastos_resumo) + 1, max_col=2)
-            categories = Reference(worksheet, min_col=1, min_row=2, max_row=len(gastos_resumo) + 1)
+            data = Reference(worksheet, min_col=2, min_row=3, max_row=len(gastos_resumo) + 3, max_col=2)
+            categories = Reference(worksheet, min_col=1, min_row=4, max_row=len(gastos_resumo) + 3)
             chart.add_data(data, titles_from_data=True)
             chart.set_categories(categories)
-
-            # Adicionar rótulos de dados
             chart.datalabels = DataLabelList()
             chart.datalabels.showVal = True
-
-            # Posicionar o gráfico na planilha
             worksheet.add_chart(chart, "D2")
 
         output.seek(0)
@@ -1037,41 +1082,22 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
 
-# Função principal assíncrona com webhooks
-async def main():
-    try:
-        application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
-        application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_excel, pattern="^(excel_|voltar)"))
-        application.add_handler(CommandHandler("resumo", resumo))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+# Função principal para iniciar o bot
+def main():
+    application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
-        port = int(os.environ.get("PORT", 8443))
-        webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-        await application.bot.set_webhook(url=webhook_url)
-        await application.initialize()
-        await application.start()
-        await application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path="/webhook",
-            webhook_url=webhook_url
-        )
-        logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
-        while True:
-            await asyncio.sleep(10)
-    except Exception as e:
-        logger.error(f"Erro ao iniciar o bot: {e}")
-        if application and application.updater:
-            await application.updater.stop()
-        if application:
-            await application.stop()
-            await application.shutdown()
-        raise
+    # Handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("resumo", resumo))
+    application.add_handler(CallbackQueryHandler(button_start, pattern="^start_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_action, pattern="^editar_|^remover_|^confirmar_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_resumo, pattern="^resumo_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_|^voltar$"))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+
+    # Iniciar o bot
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
