@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.label import DataLabelList
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+from openpyxl.cell import MergedCell  # Importação adicionada para corrigir o erro
 
 # Configuração do logging
 logging.basicConfig(
@@ -950,7 +951,6 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
 # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
-# Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
 async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     query = update.callback_query
     await query.answer()
@@ -1098,7 +1098,6 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
 
 # Função principal para iniciar o bot
-# Função principal para iniciar o bot
 def main():
     application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
@@ -1112,18 +1111,8 @@ def main():
     application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_|^voltar$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    # Configurar o webhook
-    port = int(os.getenv("PORT", 8443))  # O Render define a variável de ambiente PORT
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot"  # O Render fornece o hostname
-
-    # Iniciar o bot com webhook
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path="/bot",
-        webhook_url=webhook_url
-    )
-    logger.info(f"Bot started with webhook at {webhook_url}")
+    # Iniciar o bot
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
