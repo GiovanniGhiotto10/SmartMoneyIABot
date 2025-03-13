@@ -1040,7 +1040,21 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
 # Função principal assíncrona com webhooks
 async def main():
     try:
-        application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
+        # Token fixo fornecido
+        TOKEN = "7585573573:AAHC-v1EwpHHiBCJ5JSINejrMTdKJRIbqr4"
+        if not TOKEN:
+            logger.error("Token do Telegram não definido.")
+            raise ValueError("Token do Telegram não definido")
+
+        # Configura a porta e o webhook URL
+        PORT = int(os.environ.get("PORT", 8443))
+        WEBHOOK_URL = "https://smartmoneyiabot.onrender.com/webhook"
+        logger.info(f"Configurando webhook com URL: {WEBHOOK_URL} na porta {PORT}")
+
+        # Inicializa a aplicação
+        application = Application.builder().token(TOKEN).build()
+
+        # Adiciona os handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|voltar)"))
@@ -1050,25 +1064,29 @@ async def main():
         application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-        port = int(os.environ.get("PORT", 8443))
-        webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-        await application.bot.set_webhook(url=webhook_url)
+        # Define o webhook no Telegram
+        await application.bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"Webhook definido com sucesso: {WEBHOOK_URL}")
+
+        # Inicializa e inicia o bot
         await application.initialize()
         await application.start()
         await application.updater.start_webhook(
             listen="0.0.0.0",
-            port=port,
+            port=PORT,
             url_path="/webhook",
-            webhook_url=webhook_url
+            webhook_url=WEBHOOK_URL
         )
-        logger.info(f"Bot iniciado com sucesso via webhook on port {port}.")
+        logger.info(f"Bot iniciado com sucesso na porta {PORT} com webhook {WEBHOOK_URL}")
+
+        # Mantém o bot rodando
         while True:
             await asyncio.sleep(10)
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
-        if application and application.updater:
+        if 'application' in locals() and application.updater:
             await application.updater.stop()
-        if application:
+        if 'application' in locals():
             await application.stop()
             await application.shutdown()
         raise
