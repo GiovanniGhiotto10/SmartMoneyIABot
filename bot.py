@@ -953,7 +953,38 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
    # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada (continuação)
-   async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
+   # Handler para botões de navegação da seleção de mês para Excel
+async def button_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "voltar":
+        await handle_voltar(update, context)
+        return
+
+    mes = context.user_data.get('excel_mes', datetime.now().month)
+    ano = context.user_data.get('excel_ano', datetime.now().year)
+
+    if query.data == "excel_prev":
+        mes -= 1
+        if mes < 1:
+            mes = 12
+            ano -= 1
+    elif query.data == "excel_next":
+        mes += 1
+        if mes > 12:
+            mes = 1
+            ano += 1
+    elif query.data == "excel_gerar":
+        await gerar_planilha_excel(update, context, mes, ano)
+        return
+
+    context.user_data['excel_mes'] = mes
+    context.user_data['excel_ano'] = ano
+    await mostrar_selecao_excel(update, context, mes, ano)
+
+# Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
+async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     query = update.callback_query
     await query.answer()
 
@@ -1101,51 +1132,51 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
 
-   # Função para configurar o webhook e iniciar o servidor web
-   async def webhook(request):
-       app = request.app['telegram_app']
-       data = await request.json()
-       update = Update.de_json(data, app.bot)
-       await app.process_update(update)
-       return web.Response()
+# Função para configurar o webhook e iniciar o servidor web
+async def webhook(request):
+    app = request.app['telegram_app']
+    data = await request.json()
+    update = Update.de_json(data, app.bot)
+    await app.process_update(update)
+    return web.Response()
 
-   async def set_webhook(application):
-       # Obter a URL pública do Render (você pode configurá-la via variável de ambiente)
-       webhook_url = config("WEBHOOK_URL")  # Ex.: https://seu-bot.onrender.com/webhook
-       await application.bot.set_webhook(url=webhook_url)
+async def set_webhook(application):
+    # Obter a URL pública do Render (você pode configurá-la via variável de ambiente)
+    webhook_url = config("WEBHOOK_URL")  # Ex.: https://seu-bot.onrender.com/webhook
+    await application.bot.set_webhook(url=webhook_url)
 
-   async def main():
-       # Criar a aplicação do Telegram
-       application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
+async def main():
+    # Criar a aplicação do Telegram
+    application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
-       # Adicionar handlers
-       application.add_handler(CommandHandler("start", start))
-       application.add_handler(CommandHandler("resumo", resumo))
-       application.add_handler(CallbackQueryHandler(button_start, pattern="^start_|^voltar$"))
-       application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_|^voltar$"))
-       application.add_handler(CallbackQueryHandler(button_action, pattern="^editar_|^remover_|^confirmar_|^voltar$"))
-       application.add_handler(CallbackQueryHandler(button_resumo, pattern="^resumo_|^voltar$"))
-       application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_|^voltar$"))
-       application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    # Adicionar handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("resumo", resumo))
+    application.add_handler(CallbackQueryHandler(button_start, pattern="^start_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_gasto, pattern="^gasto_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_action, pattern="^editar_|^remover_|^confirmar_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_resumo, pattern="^resumo_|^voltar$"))
+    application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_|^voltar$"))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-       # Criar o servidor web com aiohttp
-       app = web.Application()
-       app['telegram_app'] = application
-       app.router.add_post('/webhook', webhook)
+    # Criar o servidor web com aiohttp
+    app = web.Application()
+    app['telegram_app'] = application
+    app.router.add_post('/webhook', webhook)
 
-       # Inicializar a aplicação e configurar o webhook
-       await application.initialize()
-       await application.start()
-       await set_webhook(application)
+    # Inicializar a aplicação e configurar o webhook
+    await application.initialize()
+    await application.start()
+    await set_webhook(application)
 
-       # Iniciar o servidor web
-       runner = web.AppRunner(app)
-       await runner.setup()
-       site = web.TCPSite(runner, '0.0.0.0', int(os.getenv('PORT', 8080)))
-       await site.start()
+    # Iniciar o servidor web
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.getenv('PORT', 8080)))
+    await site.start()
 
-       # Manter o programa rodando
-       await asyncio.Event().wait()
+    # Manter o programa rodando
+    await asyncio.Event().wait()
 
-   if __name__ == "__main__":
-       asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
