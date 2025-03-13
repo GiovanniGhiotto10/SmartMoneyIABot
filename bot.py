@@ -1083,6 +1083,7 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
 
 # Função principal para iniciar o bot
+# Função principal para iniciar o bot
 def main():
     application = Application.builder().token(config("TELEGRAM_TOKEN")).build()
 
@@ -1096,8 +1097,18 @@ def main():
     application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_|^voltar$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    # Iniciar o bot
-    application.run_polling()
+    # Configurar o webhook
+    port = int(os.getenv("PORT", 8443))  # O Render define a variável de ambiente PORT
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/bot"  # O Render fornece o hostname
+
+    # Iniciar o bot com webhook
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path="/bot",
+        webhook_url=webhook_url
+    )
+    logger.info(f"Bot started with webhook at {webhook_url}")
 
 if __name__ == "__main__":
     main()
