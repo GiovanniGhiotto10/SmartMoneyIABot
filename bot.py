@@ -950,6 +950,7 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Erro ao gerar o link do Power BI.", reply_markup=reply_markup)
 
 # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
+# Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
 async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
     query = update.callback_query
     await query.answer()
@@ -1026,13 +1027,27 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
                     cell.font = header_font
                     cell.border = cell_border
 
-                # Adicionar bordas e ajustar largura das colunas
+                # Adicionar bordas a todas as células
                 for row in worksheet.rows:
                     for cell in row:
                         cell.border = cell_border
-                        # Ajustar largura da coluna
-                        column_letter = cell.column_letter
-                        worksheet.column_dimensions[column_letter].auto_size = True
+
+                # Ajustar largura das colunas manualmente
+                column_widths = {}
+                for row in worksheet.rows:
+                    for cell in row:
+                        # Pular células mescladas (MergedCell)
+                        if isinstance(cell, MergedCell):
+                            continue
+                        if cell.value:
+                            # Calcular a largura com base no conteúdo
+                            column = cell.column_letter
+                            cell_length = len(str(cell.value)) + 2  # Adicionar margem
+                            column_widths[column] = max(column_widths.get(column, 0), cell_length)
+
+                # Aplicar as larguras calculadas
+                for column, width in column_widths.items():
+                    worksheet.column_dimensions[column].width = width
 
                 # Destacar valores negativos e formatar totais
                 if sheet_name == 'Resumo':
