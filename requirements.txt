@@ -3,4 +3,3 @@ psycopg2-binary
 python-decouple
 pandas
 openpyxl
-aiohttp
