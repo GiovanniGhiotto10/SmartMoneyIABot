@@ -954,152 +954,152 @@ async def send_powerbi_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada
    # Função para gerar e enviar a planilha Excel com gráficos, resumo e formatação avançada (continuação)
    async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mes, ano):
-       query = update.callback_query
-       await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-       usuario = str(query.message.chat.id)
-       try:
-           # Obter dados do mês selecionado
-           gastos = listar_gastos_mensais(usuario, mes, ano)
-           entradas = listar_entradas_mensais(usuario, mes, ano)
-           gastos_resumo = obter_gastos_mensais(usuario, mes, ano)
-           total_entradas = obter_entradas_mensais(usuario, mes, ano)
-           total_gastos = obter_total_gastos_mensais(usuario, mes, ano)
+    usuario = str(query.message.chat.id)
+    try:
+        # Obter dados do mês selecionado
+        gastos = listar_gastos_mensais(usuario, mes, ano)
+        entradas = listar_entradas_mensais(usuario, mes, ano)
+        gastos_resumo = obter_gastos_mensais(usuario, mes, ano)
+        total_entradas = obter_entradas_mensais(usuario, mes, ano)
+        total_gastos = obter_total_gastos_mensais(usuario, mes, ano)
 
-           # Criar DataFrames
-           if gastos:
-               df_gastos = pd.DataFrame(gastos, columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
-           else:
-               df_gastos = pd.DataFrame(columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
+        # Criar DataFrames
+        if gastos:
+            df_gastos = pd.DataFrame(gastos, columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
+        else:
+            df_gastos = pd.DataFrame(columns=['ID', 'Valor', 'Categoria', 'Forma de Pagamento', 'Data'])
 
-           if entradas:
-               df_entradas = pd.DataFrame(entradas, columns=['ID', 'Valor', 'Descrição', 'Data'])
-           else:
-               df_entradas = pd.DataFrame(columns=['ID', 'Valor', 'Descrição', 'Data'])
+        if entradas:
+            df_entradas = pd.DataFrame(entradas, columns=['ID', 'Valor', 'Descrição', 'Data'])
+        else:
+            df_entradas = pd.DataFrame(columns=['ID', 'Valor', 'Descrição', 'Data'])
 
-           if gastos_resumo:
-               df_gastos_resumo = pd.DataFrame(gastos_resumo, columns=['Categoria', 'Total'])
-           else:
-               df_gastos_resumo = pd.DataFrame(columns=['Categoria', 'Total'])
+        if gastos_resumo:
+            df_gastos_resumo = pd.DataFrame(gastos_resumo, columns=['Categoria', 'Total'])
+        else:
+            df_gastos_resumo = pd.DataFrame(columns=['Categoria', 'Total'])
 
-           # Criar resumo financeiro
-           df_resumo = pd.DataFrame({
-               'Descrição': ['Total de Gastos', 'Total de Entradas', 'Saldo'],
-               'Valor': [total_gastos, total_entradas, total_entradas - total_gastos]
-           })
+        # Criar resumo financeiro
+        df_resumo = pd.DataFrame({
+            'Descrição': ['Total de Gastos', 'Total de Entradas', 'Saldo'],
+            'Valor': [total_gastos, total_entradas, total_entradas - total_gastos]
+        })
 
-           # Criar o arquivo Excel
-           output = BytesIO()
-           with pd.ExcelWriter(output, engine='openpyxl') as writer:
-               df_gastos.to_excel(writer, sheet_name='Gastos', index=False, startrow=2)
-               df_entradas.to_excel(writer, sheet_name='Entradas', index=False, startrow=2)
-               df_gastos_resumo.to_excel(writer, sheet_name='Gastos por Categoria', index=False, startrow=2)
-               df_resumo.to_excel(writer, sheet_name='Resumo', index=False, startrow=2)
+        # Criar o arquivo Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_gastos.to_excel(writer, sheet_name='Gastos', index=False, startrow=2)
+            df_entradas.to_excel(writer, sheet_name='Entradas', index=False, startrow=2)
+            df_gastos_resumo.to_excel(writer, sheet_name='Gastos por Categoria', index=False, startrow=2)
+            df_resumo.to_excel(writer, sheet_name='Resumo', index=False, startrow=2)
 
-               workbook = writer.book
-               # Definir estilos
-               header_fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
-               header_font = Font(color="FFFFFF", bold=True)
-               total_font = Font(bold=True)
-               cell_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
-                                    top=Side(style='thin'), bottom=Side(style='thin'))
-               negative_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+            workbook = writer.book
+            # Definir estilos
+            header_fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            total_font = Font(bold=True)
+            cell_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                                 top=Side(style='thin'), bottom=Side(style='thin'))
+            negative_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
-               # Formatar todas as abas
-               for sheet_name in ['Gastos', 'Entradas', 'Gastos por Categoria', 'Resumo']:
-                   worksheet = workbook[sheet_name]
+            # Formatar todas as abas
+            for sheet_name in ['Gastos', 'Entradas', 'Gastos por Categoria', 'Resumo']:
+                worksheet = workbook[sheet_name]
 
-                   # Adicionar título personalizado
-                   worksheet['A1'] = f"Relatório Financeiro - Usuário {usuario} - {mes:02d}/{ano}"
-                   worksheet['A1'].font = Font(size=14, bold=True)
-                   worksheet['A1'].alignment = Alignment(horizontal='center')
-                   # Ajustar a largura do título para abranger várias colunas
-                   if sheet_name == 'Gastos':
-                       worksheet.merge_cells('A1:E1')
-                   elif sheet_name == 'Entradas':
-                       worksheet.merge_cells('A1:D1')
-                   elif sheet_name == 'Gastos por Categoria':
-                       worksheet.merge_cells('A1:B1')
-                   elif sheet_name == 'Resumo':
-                       worksheet.merge_cells('A1:B1')
+                # Adicionar título personalizado
+                worksheet['A1'] = f"Relatório Financeiro - Usuário {usuario} - {mes:02d}/{ano}"
+                worksheet['A1'].font = Font(size=14, bold=True)
+                worksheet['A1'].alignment = Alignment(horizontal='center')
+                # Ajustar a largura do título para abranger várias colunas
+                if sheet_name == 'Gastos':
+                    worksheet.merge_cells('A1:E1')
+                elif sheet_name == 'Entradas':
+                    worksheet.merge_cells('A1:D1')
+                elif sheet_name == 'Gastos por Categoria':
+                    worksheet.merge_cells('A1:B1')
+                elif sheet_name == 'Resumo':
+                    worksheet.merge_cells('A1:B1')
 
-                   # Formatar cabeçalho da tabela
-                   for cell in worksheet[3:3]:  # Linha 3 é o cabeçalho (startrow=2)
-                       cell.fill = header_fill
-                       cell.font = header_font
-                       cell.border = cell_border
+                # Formatar cabeçalho da tabela
+                for cell in worksheet[3:3]:  # Linha 3 é o cabeçalho (startrow=2)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.border = cell_border
 
-                   # Adicionar bordas a todas as células
-                   for row in worksheet.rows:
-                       for cell in row:
-                           cell.border = cell_border
+                # Adicionar bordas a todas as células
+                for row in worksheet.rows:
+                    for cell in row:
+                        cell.border = cell_border
 
-                   # Definir larguras fixas para as colunas
-                   if sheet_name == 'Gastos':
-                       worksheet.column_dimensions['A'].width = 10  # ID
-                       worksheet.column_dimensions['B'].width = 15  # Valor
-                       worksheet.column_dimensions['C'].width = 20  # Categoria
-                       worksheet.column_dimensions['D'].width = 20  # Forma de Pagamento
-                       worksheet.column_dimensions['E'].width = 15  # Data
-                   elif sheet_name == 'Entradas':
-                       worksheet.column_dimensions['A'].width = 10  # ID
-                       worksheet.column_dimensions['B'].width = 15  # Valor
-                       worksheet.column_dimensions['C'].width = 30  # Descrição
-                       worksheet.column_dimensions['D'].width = 15  # Data
-                   elif sheet_name == 'Gastos por Categoria':
-                       worksheet.column_dimensions['A'].width = 25  # Categoria
-                       worksheet.column_dimensions['B'].width = 15  # Total
-                   elif sheet_name == 'Resumo':
-                       worksheet.column_dimensions['A'].width = 20  # Descrição
-                       worksheet.column_dimensions['B'].width = 15  # Valor
+                # Definir larguras fixas para as colunas
+                if sheet_name == 'Gastos':
+                    worksheet.column_dimensions['A'].width = 10  # ID
+                    worksheet.column_dimensions['B'].width = 15  # Valor
+                    worksheet.column_dimensions['C'].width = 20  # Categoria
+                    worksheet.column_dimensions['D'].width = 20  # Forma de Pagamento
+                    worksheet.column_dimensions['E'].width = 15  # Data
+                elif sheet_name == 'Entradas':
+                    worksheet.column_dimensions['A'].width = 10  # ID
+                    worksheet.column_dimensions['B'].width = 15  # Valor
+                    worksheet.column_dimensions['C'].width = 30  # Descrição
+                    worksheet.column_dimensions['D'].width = 15  # Data
+                elif sheet_name == 'Gastos por Categoria':
+                    worksheet.column_dimensions['A'].width = 25  # Categoria
+                    worksheet.column_dimensions['B'].width = 15  # Total
+                elif sheet_name == 'Resumo':
+                    worksheet.column_dimensions['A'].width = 20  # Descrição
+                    worksheet.column_dimensions['B'].width = 15  # Valor
 
-                   # Destacar valores negativos e formatar totais
-                   if sheet_name == 'Resumo':
-                       # Destacar saldo negativo
-                       for row in worksheet['B5:B5']:  # Linha do saldo (startrow=2, linha 5 é o saldo)
-                           for cell in row:
-                               if isinstance(cell.value, (int, float)) and cell.value < 0:
-                                   cell.fill = negative_fill
-                       # Formatar totais em negrito
-                       for row in worksheet['B4:B5']:  # Total de Entradas e Saldo
-                           for cell in row:
-                               cell.font = total_font
+                # Destacar valores negativos e formatar totais
+                if sheet_name == 'Resumo':
+                    # Destacar saldo negativo
+                    for row in worksheet['B5:B5']:  # Linha do saldo (startrow=2, linha 5 é o saldo)
+                        for cell in row:
+                            if isinstance(cell.value, (int, float)) and cell.value < 0:
+                                cell.fill = negative_fill
+                    # Formatar totais em negrito
+                    for row in worksheet['B4:B5']:  # Total de Entradas e Saldo
+                        for cell in row:
+                            cell.font = total_font
 
-               # Adicionar gráfico de barras na aba "Gastos por Categoria"
-               worksheet = workbook['Gastos por Categoria']
-               chart = BarChart()
-               chart.title = f"Gastos por Categoria - {mes:02d}/{ano}"
-               chart.x_axis.title = "Categoria"
-               chart.y_axis.title = "Valor (R$)"
-               data = Reference(worksheet, min_col=2, min_row=3, max_row=len(gastos_resumo) + 3, max_col=2)
-               categories = Reference(worksheet, min_col=1, min_row=4, max_row=len(gastos_resumo) + 3)
-               chart.add_data(data, titles_from_data=True)
-               chart.set_categories(categories)
-               chart.datalabels = DataLabelList()
-               chart.datalabels.showVal = True
-               worksheet.add_chart(chart, "D2")
+            # Adicionar gráfico de barras na aba "Gastos por Categoria"
+            worksheet = workbook['Gastos por Categoria']
+            chart = BarChart()
+            chart.title = f"Gastos por Categoria - {mes:02d}/{ano}"
+            chart.x_axis.title = "Categoria"
+            chart.y_axis.title = "Valor (R$)"
+            data = Reference(worksheet, min_col=2, min_row=3, max_row=len(gastos_resumo) + 3, max_col=2)
+            categories = Reference(worksheet, min_col=1, min_row=4, max_row=len(gastos_resumo) + 3)
+            chart.add_data(data, titles_from_data=True)
+            chart.set_categories(categories)
+            chart.datalabels = DataLabelList()
+            chart.datalabels.showVal = True
+            worksheet.add_chart(chart, "D2")
 
-           output.seek(0)
+        output.seek(0)
 
-           # Enviar o arquivo ao usuário
-           await query.message.reply_document(
-               document=output,
-               filename=f"relatorio_financeiro_{usuario}_{mes:02d}_{ano}.xlsx",
-               caption=f"Planilha de {mes:02d}/{ano} gerada com sucesso!"
-           )
-           output.close()
+        # Enviar o arquivo ao usuário
+        await query.message.reply_document(
+            document=output,
+            filename=f"relatorio_financeiro_{usuario}_{mes:02d}_{ano}.xlsx",
+            caption=f"Planilha de {mes:02d}/{ano} gerada com sucesso!"
+        )
+        output.close()
 
-           # Adicionar botão "Voltar"
-           keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-           reply_markup = InlineKeyboardMarkup(keyboard)
-           await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
-           context.user_data['navigation_stack'].append("start")
+        # Adicionar botão "Voltar"
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
+        context.user_data['navigation_stack'].append("start")
 
-       except Exception as e:
-           logger.error(f"Erro ao gerar planilha Excel: {e}")
-           keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-           reply_markup = InlineKeyboardMarkup(keyboard)
-           await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Erro ao gerar planilha Excel: {e}")
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(f"Erro ao gerar a planilha: {str(e)}", reply_markup=reply_markup)
 
    # Função para configurar o webhook e iniciar o servidor web
    async def webhook(request):
