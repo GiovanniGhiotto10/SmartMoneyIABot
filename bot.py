@@ -1054,18 +1054,18 @@ async def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
         # Configuração do webhook
-        port = int(os.environ.get("PORT", 8443))  # Porta padrão 8443, ajustável pelo Render
-        hostname = "smartmoneyiabot.onrender.com"  # Apenas o domínio
+        port = int(os.environ.get("PORT", 8443))  # Usa a porta do Render ou 8443 como fallback
+        hostname = "smartmoneyiabot.onrender.com"
         webhook_url = f"https://{hostname}/webhook"
-        logger.info(f"Definindo URL do webhook: {webhook_url}")
+        logger.info(f"Definindo URL do webhook: {webhook_url} na porta {port}")
 
         # Configurar e iniciar o webhook
         await application.bot.set_webhook(url=webhook_url)
         await application.initialize()
         await application.start()
         await application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=port,
+            listen="0.0.0.0",  # Escuta em todas as interfaces
+            port=port,         # Usa a porta fornecida pelo Render
             url_path="/webhook",
             webhook_url=webhook_url
         )
@@ -1084,3 +1084,6 @@ async def main():
             await application.stop()
             await application.shutdown()
         raise
+
+if __name__ == "__main__":
+    asyncio.run(main())
