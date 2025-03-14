@@ -318,7 +318,8 @@ async def button_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['navigation_stack'].append("start")
     elif query.data == "start_remover":
         keyboard = [
-            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER GASTO NORMAL", callback_data="remover_gasto_normal")],
+            [InlineKeyboardButton("REMOVER GASTO FIXO", callback_data="remover_gasto_fixo")],
             [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
             [InlineKeyboardButton("Voltar", callback_data="voltar")]
         ]
@@ -640,7 +641,7 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             usuario = str(query.message.chat.id)
             salvar_gasto(usuario, valor, categoria, forma_pagamento, data)
-            msg = f"Gasto de R${valor:.2f} na categoria '{categoria}' ({forma_pagamento}) salvo com sucesso!"
+            msg = f"Gasto normal de R${valor:.2f} na categoria '{categoria}' ({forma_pagamento}) salvo com sucesso!"
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(msg, reply_markup=reply_markup)
@@ -651,10 +652,10 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ano = datetime.now().year
             await verificar_limite(query, usuario, mes, ano)
         except Exception as e:
-            logger.error(f"Erro ao salvar o gasto: {str(e)} - Dados: usuario={usuario}, valor={valor}, categoria={categoria}, forma_pagamento={forma_pagamento}, data={data}")
+            logger.error(f"Erro ao salvar o gasto normal: {str(e)} - Dados: usuario={usuario}, valor={valor}, categoria={categoria}, forma_pagamento={forma_pagamento}, data={data}")
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(f"Erro ao salvar o gasto: {str(e)}", reply_markup=reply_markup)
+            await query.message.edit_text(f"Erro ao salvar o gasto normal: {str(e)}", reply_markup=reply_markup)
     elif query.data.startswith("gasto_fixo_categoria_"):
         categoria = query.data[len("gasto_fixo_categoria_"):]
         if categoria == "Escrever Categoria":
@@ -769,27 +770,50 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Insira o novo valor (opcional) e descrição (opcional), separados por espaço (ex.: 200 Salário):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_editar_dados_entrada'
         context.user_data['navigation_stack'].append("editar_entrada")
-    elif query.data == "remover_gasto":
+    elif query.data == "remover_gasto_normal":
         try:
             gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
-            if not gastos:
+            gastos_normais = [g for g in gastos if not any(p in g[2] for p in ["(DIÁRIO)", "(SEMANAL)", "(MENSAL)"])]
+            if not gastos_normais:
                 keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await query.message.edit_text("Nenhum gasto registrado para remover.", reply_markup=reply_markup)
+                await query.message.edit_text("Nenhum gasto normal registrado para remover.", reply_markup=reply_markup)
                 return
             keyboard = [
-                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"remover_gasto_select_{gasto[0]}")]
-                for gasto in gastos
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"remover_gasto_normal_select_{gasto[0]}")]
+                for gasto in gastos_normais
             ]
             keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text("Selecione o gasto para remover:", reply_markup=reply_markup)
+            await query.message.edit_text("Selecione o gasto normal para remover:", reply_markup=reply_markup)
             context.user_data['navigation_stack'].append("start_remover")
         except Exception as e:
-            logger.error(f"Erro ao carregar gastos para remoção: {str(e)}")
+            logger.error(f"Erro ao carregar gastos normais para remoção: {str(e)}")
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text("Erro ao carregar os gastos para remoção.", reply_markup=reply_markup)
+            await query.message.edit_text("Erro ao carregar os gastos normais para remoção.", reply_markup=reply_markup)
+    elif query.data == "remover_gasto_fixo":
+        try:
+            gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
+            gastos_fixos = [g for g in gastos if any(p in g[2] for p in ["(DIÁRIO)", "(SEMANAL)", "(MENSAL)"])]
+            if not gastos_fixos:
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.message.edit_text("Nenhum gasto fixo registrado para remover.", reply_markup=reply_markup)
+                return
+            keyboard = [
+                [InlineKeyboardButton(f"ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}", callback_data=f"remover_gasto_fixo_select_{gasto[0]}")]
+                for gasto in gastos_fixos
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Selecione o gasto fixo para remover:", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("start_remover")
+        except Exception as e:
+            logger.error(f"Erro ao carregar gastos fixos para remoção: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Erro ao carregar os gastos fixos para remoção.", reply_markup=reply_markup)
     elif query.data == "remover_entrada":
         try:
             entradas = listar_entradas_mensais(usuario, datetime.now().month, datetime.now().year)
@@ -811,14 +835,14 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text("Erro ao carregar os valores recebidos para remoção.", reply_markup=reply_markup)
-    elif query.data.startswith("remover_gasto_select_"):
-        gasto_id = query.data[len("remover_gasto_select_"):]
+    elif query.data.startswith("remover_gasto_normal_select_"):
+        gasto_id = query.data[len("remover_gasto_normal_select_"):]
         context.user_data['remover_id'] = gasto_id
-        context.user_data['remover_tipo'] = 'gasto'
+        context.user_data['remover_tipo'] = 'gasto_normal'
         gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
         gasto = next((g for g in gastos if str(g[0]) == gasto_id), None)
         if gasto:
-            opcao = f"o gasto ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}"
+            opcao = f"o gasto normal ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}"
             keyboard = [
                 [
                     InlineKeyboardButton("SIM", callback_data="confirmar_remover_sim"),
@@ -828,7 +852,25 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(f"Você tem certeza que deseja remover {opcao}?", reply_markup=reply_markup)
-            context.user_data['navigation_stack'].append("remover_gasto")
+            context.user_data['navigation_stack'].append("remover_gasto_normal")
+    elif query.data.startswith("remover_gasto_fixo_select_"):
+        gasto_id = query.data[len("remover_gasto_fixo_select_"):]
+        context.user_data['remover_id'] = gasto_id
+        context.user_data['remover_tipo'] = 'gasto_fixo'
+        gastos = listar_gastos_mensais(usuario, datetime.now().month, datetime.now().year)
+        gasto = next((g for g in gastos if str(g[0]) == gasto_id), None)
+        if gasto:
+            opcao = f"o gasto fixo ID {gasto[0]} - R${gasto[1]:.2f} - {gasto[2]} - {gasto[3]}"
+            keyboard = [
+                [
+                    InlineKeyboardButton("SIM", callback_data="confirmar_remover_sim"),
+                    InlineKeyboardButton("NÃO", callback_data="confirmar_remover_nao")
+                ],
+                [InlineKeyboardButton("Voltar", callback_data="voltar")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(f"Você tem certeza que deseja remover {opcao}?", reply_markup=reply_markup)
+            context.user_data['navigation_stack'].append("remover_gasto_fixo")
     elif query.data.startswith("remover_entrada_select_"):
         entrada_id = query.data[len("remover_entrada_select_"):]
         context.user_data['remover_id'] = entrada_id
@@ -851,9 +893,12 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             remover_id = context.user_data.get('remover_id')
             remover_tipo = context.user_data.get('remover_tipo')
-            if remover_tipo == 'gasto':
+            if remover_tipo == 'gasto_normal':
                 remover_gasto(usuario, int(remover_id))
-                msg = f"Gasto ID {remover_id} removido com sucesso!"
+                msg = f"Gasto normal ID {remover_id} removido com sucesso!"
+            elif remover_tipo == 'gasto_fixo':
+                remover_gasto(usuario, int(remover_id))
+                msg = f"Gasto fixo ID {remover_id} removido com sucesso!"
             elif remover_tipo == 'entrada':
                 remover_entrada(usuario, int(remover_id))
                 msg = f"Entrada ID {remover_id} removida com sucesso!"
@@ -869,7 +914,8 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.edit_text("Erro ao remover o item.", reply_markup=reply_markup)
     elif query.data == "confirmar_remover_nao":
         keyboard = [
-            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER GASTO NORMAL", callback_data="remover_gasto_normal")],
+            [InlineKeyboardButton("REMOVER GASTO FIXO", callback_data="remover_gasto_fixo")],
             [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
             [InlineKeyboardButton("Voltar", callback_data="voltar")]
         ]
@@ -901,7 +947,8 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Escolha o que deseja editar:", reply_markup=reply_markup)
     elif previous_state == "start_remover":
         keyboard = [
-            [InlineKeyboardButton("REMOVER GASTO", callback_data="remover_gasto")],
+            [InlineKeyboardButton("REMOVER GASTO NORMAL", callback_data="remover_gasto_normal")],
+            [InlineKeyboardButton("REMOVER GASTO FIXO", callback_data="remover_gasto_fixo")],
             [InlineKeyboardButton("REMOVER VALOR RECEBIDO", callback_data="remover_entrada")],
             [InlineKeyboardButton("Voltar", callback_data="voltar")]
         ]
@@ -911,8 +958,10 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await button_action(Update(0, query.message), context, "editar_gasto")
     elif previous_state == "editar_entrada":
         await button_action(Update(0, query.message), context, "editar_entrada")
-    elif previous_state == "remover_gasto":
-        await button_action(Update(0, query.message), context, "remover_gasto")
+    elif previous_state == "remover_gasto_normal":
+        await button_action(Update(0, query.message), context, "remover_gasto_normal")
+    elif previous_state == "remover_gasto_fixo":
+        await button_action(Update(0, query.message), context, "remover_gasto_fixo")
     elif previous_state == "remover_entrada":
         await button_action(Update(0, query.message), context, "remover_entrada")
     elif previous_state == "awaiting_gasto_valor":
