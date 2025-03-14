@@ -490,7 +490,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Escolha a categoria do gasto fixo ou escreva uma personalizada:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_categoria'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
+            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_valor")
         except ValueError:
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -507,7 +507,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
+            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_forma")
         else:
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -674,7 +674,7 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
+            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_forma")
     elif query.data.startswith("gasto_fixo_forma_"):
         forma_pagamento = query.data[len("gasto_fixo_forma_"):]
         valor = context.user_data.get('gasto_fixo_valor')
@@ -998,6 +998,32 @@ async def handle_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Escolha a periodicidade do gasto fixo:", reply_markup=reply_markup)
+    elif previous_state == "awaiting_gasto_fixo_valor":
+        periodicidade = context.user_data.get('gasto_fixo_periodicidade', '').lower()
+        keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(f"Insira o valor do gasto fixo {periodicidade} (ex.: 100):", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_fixo_valor'
+    elif previous_state == "awaiting_gasto_fixo_categoria":
+        categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros", "Escrever Categoria"]
+        keyboard = [
+            [InlineKeyboardButton(cat, callback_data=f"gasto_fixo_categoria_{cat}") for cat in categorias[i:i+2]]
+            for i in range(0, len(categorias), 2)
+        ]
+        keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha a categoria do gasto fixo ou escreva uma personalizada:", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_fixo_categoria'
+    elif previous_state == "awaiting_gasto_fixo_forma":
+        formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
+        keyboard = [
+            [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
+            for i in range(0, len(formas_pagamento), 2)
+        ]
+        keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_fixo_forma'
 
 # Comando /resumo
 async def resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
