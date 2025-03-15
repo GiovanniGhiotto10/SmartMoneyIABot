@@ -1293,7 +1293,7 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
 # Função principal assíncrona com webhooks
 async def main():
     try:
-        application = Application.builder().token("7585573573:AAHC-v1EwpHHiBCJ5JSINejrMTdKJRIbqr4").build()
+        application = Application.builder().token(config("BOT_TOKEN")).build()
 
         # Adicionando os handlers
         application.add_handler(CommandHandler("start", start))
@@ -1305,15 +1305,10 @@ async def main():
         application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_"))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-        # Iniciando o bot com polling
-        await application.run_polling(allowed_updates=Update.ALL)
+        # Iniciando o bot com polling (sem especificar allowed_updates)
+        await application.run_polling()
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
         raise
     finally:
-        # Fechar a aplicação adequadamente (se necessário)
         await application.shutdown()
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
