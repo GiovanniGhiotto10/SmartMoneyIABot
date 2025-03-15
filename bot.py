@@ -474,20 +474,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif state == 'awaiting_gasto_fixo_categoria':
         if update.message.text:
             context.user_data['gasto_fixo_categoria'] = update.message.text
-            formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
-            keyboard = [
-                [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
-                for i in range(0, len(formas_pagamento), 2)
-            ]
-            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
-            context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
         else:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.", reply_markup=reply_markup)
+            categoria = query.data[len("gasto_fixo_categoria_"):] if 'query' in locals() else None
+            if categoria and categoria != "Escrever Categoria":
+                context.user_data['gasto_fixo_categoria'] = categoria
+        formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
+        keyboard = [
+            [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
+            for i in range(0, len(formas_pagamento), 2)
+        ]
+        keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
+        context.user_data['state'] = 'awaiting_gasto_fixo_forma'
+        context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
     elif state == 'awaiting_editar_dados_gasto':
         try:
             parts = update.message.text.split(maxsplit=3)
@@ -671,7 +671,7 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_forma")
+            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
     elif query.data.startswith("gasto_fixo_forma_"):
         forma_pagamento = query.data[len("gasto_fixo_forma_"):]
         valor = context.user_data.get('gasto_fixo_valor')
