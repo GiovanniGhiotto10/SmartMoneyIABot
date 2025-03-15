@@ -457,6 +457,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("O valor deve ser positivo. Tente novamente.", reply_markup=reply_markup)
                 return
             context.user_data['gasto_fixo_valor'] = valor
+            periodicidade = context.user_data.get('gasto_fixo_periodicidade', 'MENSAL').lower()
             categorias = ["Alimentação", "Lazer", "Transporte", "Saúde", "Outros", "Escrever Categoria"]
             keyboard = [
                 [InlineKeyboardButton(cat, callback_data=f"gasto_fixo_categoria_{cat}") for cat in categorias[i:i+2]]
@@ -464,7 +465,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Escolha a categoria do gasto fixo ou escreva uma personalizada:", reply_markup=reply_markup)
+            await update.message.reply_text(f"Escolha a categoria do gasto fixo {periodicidade} ou escreva uma personalizada:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_categoria'
             context.user_data['navigation_stack'].append("awaiting_gasto_fixo_valor")
         except ValueError:
@@ -475,9 +476,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message.text:
             context.user_data['gasto_fixo_categoria'] = update.message.text
         else:
-            categoria = query.data[len("gasto_fixo_categoria_"):] if 'query' in locals() else None
-            if categoria and categoria != "Escrever Categoria":
-                context.user_data['gasto_fixo_categoria'] = categoria
+            # Se a categoria foi escolhida via botão (não texto), o valor será tratado em button_gasto
+            return  # Deixa o button_gasto lidar com a escolha de categoria via botão
         formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
         keyboard = [
             [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
@@ -488,6 +488,34 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_fixo_forma'
         context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
+    elif state == 'awaiting_gasto_fixo_forma':
+        forma_pagamento = update.message.text  # Aqui o usuário pode escrever a forma, mas idealmente usa botões
+        if forma_pagamento not in ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]:
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Forma de pagamento inválida. Escolha uma opção válida.", reply_markup=reply_markup)
+            return
+        valor = context.user_data.get('gasto_fixo_valor')
+        categoria = context.user_data.get('gasto_fixo_categoria')
+        periodicidade = context.user_data.get('gasto_fixo_periodicidade', 'MENSAL')
+        data = datetime.now().strftime('%Y-%m-%d')
+        try:
+            usuario = str(update.message.chat.id)
+            salvar_gasto(usuario, valor, f"{categoria} ({periodicidade})", forma_pagamento, data)
+            msg = f"Gasto fixo de R${valor:.2f} na categoria '{categoria}' ({periodicidade}, {forma_pagamento}) salvo com sucesso!"
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(msg, reply_markup=reply_markup)
+            context.user_data.pop('state', None)
+            context.user_data.pop('gasto_fixo_valor', None)
+            context.user_data.pop('gasto_fixo_categoria', None)
+            context.user_data.pop('gasto_fixo_periodicidade', None)
+            await verificar_limite(update, usuario, mes, ano)
+        except Exception as e:
+            logger.error(f"Erro ao salvar o gasto fixo: {str(e)}")
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(f"Erro ao salvar o gasto fixo: {str(e)}", reply_markup=reply_markup)
     elif state == 'awaiting_editar_dados_gasto':
         try:
             parts = update.message.text.split(maxsplit=3)
@@ -608,9 +636,28 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['gasto_fixo_periodicidade'] = periodicidade.upper()
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(f"Insira o valor do gasto fixo {periodicidade} (ex.: 100):", reply_markup=reply_markup)
+        await query.message.edit_text(f"Insira o valor do gasto fixo {periodicidade.lower()} (ex.: 100):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_fixo_valor'
         context.user_data['navigation_stack'].append("awaiting_gasto_fixo_periodicidade")
+    elif query.data.startswith("gasto_fixo_categoria_"):
+        categoria = query.data[len("gasto_fixo_categoria_"):]
+        if categoria == "Escrever Categoria":
+            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Por favor, escreva a categoria personalizada para o gasto fixo:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_gasto_fixo_categoria'
+        else:
+            context.user_data['gasto_fixo_categoria'] = categoria
+            formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
+            keyboard = [
+                [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
+                for i in range(0, len(formas_pagamento), 2)
+            ]
+            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
+            context.user_data['state'] = 'awaiting_gasto_fixo_forma'
+            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
     elif query.data.startswith("gasto_categoria_"):
         categoria = query.data[len("gasto_categoria_"):]
         if categoria == "Escrever Categoria":
@@ -653,30 +700,11 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(f"Erro ao salvar o gasto normal: {str(e)}", reply_markup=reply_markup)
-    elif query.data.startswith("gasto_fixo_categoria_"):
-        categoria = query.data[len("gasto_fixo_categoria_"):]
-        if categoria == "Escrever Categoria":
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text("Por favor, escreva a categoria personalizada para o gasto fixo:", reply_markup=reply_markup)
-            context.user_data['state'] = 'awaiting_gasto_fixo_categoria'
-        else:
-            context.user_data['gasto_fixo_categoria'] = categoria
-            formas_pagamento = ["Cartão de Crédito", "Cartão de Débito", "Pix", "Dinheiro"]
-            keyboard = [
-                [InlineKeyboardButton(fp, callback_data=f"gasto_fixo_forma_{fp}") for fp in formas_pagamento[i:i+2]]
-                for i in range(0, len(formas_pagamento), 2)
-            ]
-            keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
-            context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_categoria")
     elif query.data.startswith("gasto_fixo_forma_"):
         forma_pagamento = query.data[len("gasto_fixo_forma_"):]
         valor = context.user_data.get('gasto_fixo_valor')
         categoria = context.user_data.get('gasto_fixo_categoria')
-        periodicidade = context.user_data.get('gasto_fixo_periodicidade')
+        periodicidade = context.user_data.get('gasto_fixo_periodicidade', 'MENSAL')
         data = datetime.now().strftime('%Y-%m-%d')
         try:
             usuario = str(query.message.chat.id)
@@ -1267,44 +1295,25 @@ async def main():
     try:
         application = Application.builder().token("7585573573:AAHC-v1EwpHHiBCJ5JSINejrMTdKJRIbqr4").build()
 
+        # Adicionando os handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|definir_limite|voltar)"))
         application.add_handler(CallbackQueryHandler(button_entrada, pattern="^entrada_"))
         application.add_handler(CallbackQueryHandler(button_action, pattern="^(editar_|remover_|confirmar_|voltar)"))
         application.add_handler(CallbackQueryHandler(button_resumo, pattern="^(resumo_|voltar)"))
-        application.add_handler(CallbackQueryHandler(button_excel, pattern="^(excel_|voltar)"))
-        application.add_handler(CommandHandler("resumo", resumo))
+        application.add_handler(CallbackQueryHandler(button_excel, pattern="^excel_"))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-        port = int(os.environ.get("PORT", 8443))
-        hostname = "smartmoneyiabot.onrender.com"
-        webhook_url = f"https://{hostname}/webhook"
-        logger.info(f"Definindo URL do webhook: {webhook_url} na porta {port}")
-
-        await application.bot.set_webhook(url=webhook_url)
-        await application.initialize()
-        await application.start()
-        await application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path="/webhook",
-            webhook_url=webhook_url
-        )
-
-        logger.info(f"Bot iniciado com sucesso via webhook na porta {port}.")
-        
-        while True:
-            await asyncio.sleep(3600)
-
+        # Iniciando o bot com polling
+        await application.run_polling(allowed_updates=Update.ALL)
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
-        if 'application' in locals():
-            if application.updater:
-                await application.updater.stop()
-            await application.stop()
-            await application.shutdown()
         raise
+    finally:
+        # Fechar a aplicação adequadamente (se necessário)
+        await application.shutdown()
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
