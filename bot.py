@@ -458,11 +458,10 @@ async def button_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('state')
     if not state:
+        keyboard = [[InlineKeyboardButton("Voltar ao início", callback_data="start")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Por favor, use os comandos ou botões para interagir comigo.", reply_markup=reply_markup)
         return
-
-    usuario = str(update.message.chat.id)
-    mes = datetime.now().month
-    ano = datetime.now().year
 
     if state == 'awaiting_gasto_valor':
         try:
@@ -480,7 +479,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Escolha a categoria do gasto ou escreva uma personalizada:", reply_markup=reply_markup)
+            await update.message.reply_text("Escolha a categoria do gasto normal ou escreva uma personalizada:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_categoria'
             context.user_data['navigation_stack'].append("awaiting_gasto_valor")
         except ValueError:
@@ -497,39 +496,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar")])
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Escolha a forma de pagamento:", reply_markup=reply_markup)
+            await update.message.reply_text("Escolha a forma de pagamento do gasto normal:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_forma'
             context.user_data['navigation_stack'].append("awaiting_gasto_categoria")
         else:
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.", reply_markup=reply_markup)
-    elif state == 'awaiting_entrada':
-        try:
-            parts = update.message.text.split(maxsplit=1)
-            if len(parts) != 2:
-                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("Formato inválido. Use: VALOR DESCRICAO (ex.: 100 Salário).", reply_markup=reply_markup)
-                return
-            valor = float(parts[0])
-            if valor <= 0:
-                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("O valor deve ser positivo. Tente novamente.", reply_markup=reply_markup)
-                return
-            descricao = parts[1]
-            data = datetime.now().strftime('%Y-%m-%d')
-            salvar_entrada(usuario, valor, descricao, data)
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(f"Entrada de R${valor:.2f} - {descricao} salva!", reply_markup=reply_markup)
-            context.user_data.pop('state', None)
-            await verificar_limite(update, usuario, mes, ano)
-        except ValueError:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Valor inválido. Insira um número (ex.: 100 Salário).", reply_markup=reply_markup)
     elif state == 'awaiting_gasto_fixo_valor':
         try:
             valor = float(update.message.text)
@@ -570,57 +543,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text("Por favor, escreva uma categoria ou escolha uma das opções.", reply_markup=reply_markup)
-    elif state == 'awaiting_editar_dados_gasto':
-        try:
-            parts = update.message.text.split(maxsplit=3)
-            valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
-            categoria = parts[1] if len(parts) > 1 and parts[1] else None
-            forma_pagamento = parts[2] if len(parts) > 2 and parts[2] else None
-            if valor is not None and valor <= 0:
-                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("O valor deve ser positivo.", reply_markup=reply_markup)
-                return
-            gasto_id = context.user_data['editar_id']
-            editar_gasto(usuario, gasto_id, valor, categoria, forma_pagamento)
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(f"Gasto ID {gasto_id} editado com sucesso!", reply_markup=reply_markup)
-            context.user_data.pop('state', None)
-            context.user_data.pop('editar_id', None)
-        except ValueError:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Dados inválidos. Use: VALOR CATEGORIA FORMA (ex.: 200 Alimentação Cartão).", reply_markup=reply_markup)
-        except Exception:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Erro ao editar o gasto ou ID não encontrado.", reply_markup=reply_markup)
-    elif state == 'awaiting_editar_dados_entrada':
-        try:
-            parts = update.message.text.split(maxsplit=2)
-            valor = float(parts[0]) if len(parts) > 0 and parts[0] else None
-            descricao = parts[1] if len(parts) > 1 and parts[1] else None
-            if valor is not None and valor <= 0:
-                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("O valor deve ser positivo.", reply_markup=reply_markup)
-                return
-            entrada_id = context.user_data['editar_id']
-            editar_entrada(usuario, entrada_id, valor, descricao)
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(f"Entrada ID {entrada_id} editada com sucesso!", reply_markup=reply_markup)
-            context.user_data.pop('state', None)
-            context.user_data.pop('editar_id', None)
-        except ValueError:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Dados inválidos. Use: VALOR DESCRICAO (ex.: 200 Salário).", reply_markup=reply_markup)
-        except Exception:
-            keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Erro ao editar a entrada ou ID não encontrado.", reply_markup=reply_markup)
     elif state == 'awaiting_definirlimite':
         try:
             limite = float(update.message.text)
@@ -629,11 +551,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.reply_text("O limite deve ser positivo. Tente novamente.", reply_markup=reply_markup)
                 return
-            definir_limite(usuario, limite)
+            usuario = str(update.message.chat.id)
+            salvar_limite(usuario, limite)
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(f"Limite de R${limite:.2f} definido com sucesso!", reply_markup=reply_markup)
             context.user_data.pop('state', None)
+            context.user_data['navigation_stack'].append("definir_limite")
         except ValueError:
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -753,7 +677,6 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text("Escolha a forma de pagamento do gasto fixo:", reply_markup=reply_markup)
             context.user_data['state'] = 'awaiting_gasto_fixo_forma'
-            context.user_data['navigation_stack'].append("awaiting_gasto_fixo_forma")
     elif query.data.startswith("gasto_fixo_forma_"):
         forma_pagamento = query.data[len("gasto_fixo_forma_"):]
         valor = context.user_data.get('gasto_fixo_valor')
@@ -762,9 +685,7 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = datetime.now().strftime('%Y-%m-%d')
         try:
             usuario = str(query.message.chat.id)
-            # Salva o gasto fixo na tabela de gastos fixos
             salvar_gasto_fixo(usuario, valor, categoria, forma_pagamento, periodicidade, data)
-            # Registra o primeiro gasto imediatamente
             salvar_gasto(usuario, valor, f"{categoria} ({periodicidade})", forma_pagamento, data)
             msg = f"Gasto fixo de R${valor:.2f} na categoria '{categoria}' ({periodicidade}, {forma_pagamento}) salvo com sucesso!"
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
@@ -788,7 +709,6 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Por favor, insira o valor do limite (ex.: 1000):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_definirlimite'
         context.user_data['navigation_stack'].append("gasto_normal")
-
 # Handler para botões de entrada
 async def button_entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
