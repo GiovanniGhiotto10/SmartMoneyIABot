@@ -1339,9 +1339,6 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
-                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
         context.user_data['navigation_stack'].append("start")
 
     except Exception as e:
