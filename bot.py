@@ -38,6 +38,36 @@ def salvar_gasto(usuario, valor, categoria, forma_pagamento, data):
         logger.error(f"Erro ao salvar gasto: {e}")
         raise
 
+# Função para salvar um gasto fixo
+def salvar_gasto_fixo(usuario, valor, categoria, forma_pagamento, periodicidade, data_inicio):
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                INSERT INTO gastos_fixos (usuario, valor, categoria, forma_pagamento, periodicidade, data_inicio)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (usuario, valor, categoria, forma_pagamento, periodicidade, data_inicio))
+                conn.commit()
+        logger.info(f"Gasto fixo salvo: R${valor} em {categoria} ({periodicidade}) por {usuario}")
+    except Exception as e:
+        logger.error(f"Erro ao salvar gasto fixo: {e}")
+        raise
+
+# Função para obter gastos fixos ativos
+def obter_gastos_fixos_ativos():
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                SELECT usuario, valor, categoria, forma_pagamento, periodicidade, data_inicio
+                FROM gastos_fixos
+                WHERE ativo = TRUE
+                ''')
+                return cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Erro ao obter gastos fixos: {e}")
+        raise
+
 # Função para salvar uma entrada
 def salvar_entrada(usuario, valor, descricao, data):
     try:
@@ -259,6 +289,23 @@ async def verificar_limite(update: Update, usuario, mes, ano):
     except Exception as e:
         logger.error(f"Erro ao verificar limite: {e}")
 
+# Função auxiliar para verificar limite sem Update (usada na tarefa agendada)
+async def verificar_limite_fake(usuario, mes, ano, bot):
+    try:
+        limite = obter_limite(usuario)
+        if limite is None:
+            return
+        
+        total_gastos = obter_total_gastos_mensais(usuario, mes, ano)
+        if total_gastos > limite:
+            await bot.send_message(
+                chat_id=usuario,
+                text=f"⚠️ Alerta: Você ultrapassou seu limite de gastos mensal de R${limite:.2f}! "
+                     f"Seu total de gastos em {mes:02d}/{ano} é R${total_gastos:.2f}."
+            )
+    except Exception as e:
+        logger.error(f"Erro ao verificar limite (fake): {e}")
+
 # Função para gerar recomendações
 def gerar_recomendacao(gastos):
     total_gastos = sum(total for _, total in gastos)
@@ -270,6 +317,41 @@ def gerar_recomendacao(gastos):
     elif total_gastos > 1500:
         return "Seus gastos estão moderados. Tente economizar um pouco mais."
     return "Seus gastos estão sob controle. Parabéns!"
+
+# Função para registrar automaticamente os gastos fixos
+async def registrar_gastos_fixos_automaticamente(application):
+    while True:
+        try:
+            hoje = datetime.now()
+            gastos_fixos = obter_gastos_fixos_ativos()
+            for usuario, valor, categoria, forma_pagamento, periodicidade, data_inicio in gastos_fixos:
+                data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+                deve_registrar = False
+
+                if periodicidade == "DIÁRIO":
+                    deve_registrar = True
+                elif periodicidade == "SEMANAL":
+                    dias_desde_inicio = (hoje - data_inicio).days
+                    deve_registrar = dias_desde_inicio % 7 == 0 and hoje.date() >= data_inicio.date()
+                elif periodicidade == "MENSAL":
+                    deve_registrar = hoje.day == 1 and hoje.date() >= data_inicio.date()
+
+                if deve_registrar:
+                    data_atual = hoje.strftime('%Y-%m-%d')
+                    salvar_gasto(usuario, valor, f"{categoria} ({periodicidade})", forma_pagamento, data_atual)
+                    logger.info(f"Gasto fixo registrado automaticamente: R${valor} em {categoria} ({periodicidade}) para {usuario}")
+                    await application.bot.send_message(
+                        chat_id=usuario,
+                        text=f"Gasto fixo de R${valor:.2f} ({categoria}, {periodicidade}) registrado automaticamente hoje!"
+                    )
+                    mes = hoje.month
+                    ano = hoje.year
+                    await verificar_limite_fake(usuario, mes, ano, application.bot)
+
+            await asyncio.sleep(3600)  # Verifica a cada hora
+        except Exception as e:
+            logger.error(f"Erro na tarefa de gastos fixos automáticos: {e}")
+            await asyncio.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
 # Comando /start (menu interativo)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -604,11 +686,11 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("Escolha a periodicidade do gasto fixo:", reply_markup=reply_markup)
         context.user_data['navigation_stack'].append("gasto_fixo")
     elif query.data.startswith("gasto_fixo_"):
-        periodicidade = query.data[len("gasto_fixo_"):]
-        context.user_data['gasto_fixo_periodicidade'] = periodicidade.upper()
+        periodicidade = query.data[len("gasto_fixo_"):].upper()
+        context.user_data['gasto_fixo_periodicidade'] = periodicidade
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(f"Insira o valor do gasto fixo {periodicidade} (ex.: 100):", reply_markup=reply_markup)
+        await query.message.edit_text(f"Insira o valor do gasto fixo {periodicidade.lower()} (ex.: 100):", reply_markup=reply_markup)
         context.user_data['state'] = 'awaiting_gasto_fixo_valor'
         context.user_data['navigation_stack'].append("awaiting_gasto_fixo_periodicidade")
     elif query.data.startswith("gasto_categoria_"):
@@ -680,6 +762,9 @@ async def button_gasto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = datetime.now().strftime('%Y-%m-%d')
         try:
             usuario = str(query.message.chat.id)
+            # Salva o gasto fixo na tabela de gastos fixos
+            salvar_gasto_fixo(usuario, valor, categoria, forma_pagamento, periodicidade, data)
+            # Registra o primeiro gasto imediatamente
             salvar_gasto(usuario, valor, f"{categoria} ({periodicidade})", forma_pagamento, data)
             msg = f"Gasto fixo de R${valor:.2f} na categoria '{categoria}' ({periodicidade}, {forma_pagamento}) salvo com sucesso!"
             keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
@@ -1254,6 +1339,9 @@ async def gerar_planilha_excel(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
+                keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("Planilha gerada com sucesso!", reply_markup=reply_markup)
         context.user_data['navigation_stack'].append("start")
 
     except Exception as e:
@@ -1267,6 +1355,7 @@ async def main():
     try:
         application = Application.builder().token("7585573573:AAHC-v1EwpHHiBCJ5JSINejrMTdKJRIbqr4").build()
 
+        # Adicionando handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CallbackQueryHandler(button_start, pattern="^start_"))
         application.add_handler(CallbackQueryHandler(button_gasto, pattern="^(gasto_|definir_limite|voltar)"))
@@ -1277,11 +1366,13 @@ async def main():
         application.add_handler(CommandHandler("resumo", resumo))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
+        # Configuração do webhook para Render
         port = int(os.environ.get("PORT", 8443))
         hostname = "smartmoneyiabot.onrender.com"
         webhook_url = f"https://{hostname}/webhook"
         logger.info(f"Definindo URL do webhook: {webhook_url} na porta {port}")
 
+        # Inicia o webhook
         await application.bot.set_webhook(url=webhook_url)
         await application.initialize()
         await application.start()
@@ -1293,9 +1384,13 @@ async def main():
         )
 
         logger.info(f"Bot iniciado com sucesso via webhook na porta {port}.")
-        
+
+        # Inicia a tarefa de registro automático de gastos fixos em segundo plano
+        asyncio.create_task(registrar_gastos_fixos_automaticamente(application))
+
+        # Mantém o bot rodando
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(3600)  # Mantém o loop principal ativo, verificando a cada hora
 
     except Exception as e:
         logger.error(f"Erro ao iniciar o bot: {e}")
