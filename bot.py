@@ -428,9 +428,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(parts) != 2:
                 keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("Invalid format. Use: AMOUNT DESCRIPTION (e.g., 100 Salary).", reply_markup=reply
-
-_markup)
+                await update.message.reply_text("Invalid format. Use: AMOUNT DESCRIPTION (e.g., 100 Salary).", reply_markup=reply_markup)
                 return
             amount = float(parts[0])
             if amount <= 0:
@@ -526,7 +524,7 @@ _markup)
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.reply_text("The amount must be positive.", reply_markup=reply_markup)
                 return
-            income_id = trast.user_data['edit_id']
+            income_id = context.user_data['edit_id']
             edit_income(user, income_id, amount, description)
             keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -761,7 +759,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.edit_text("No fixed expenses recorded to edit.", reply_markup=reply_markup)
                 return
             keyboard = [
-                [InlineKeyboardButton(f"ID {expense[0]} - ${expense[1]:.2f} - {expense[2]} - {expense[3]}", callback_data=f"edit_expense_select_{expense[0]}")]
+                [InlineKeyboardButton(f"ID {expense[0]} - ${expense[1]:.2f} - {exercise[2]} - {expense[3]}", callback_data=f"edit_expense_select_{expense[0]}")]
                 for expense in fixed_expenses
             ]
             keyboard.append([InlineKeyboardButton("Back", callback_data="back")])
@@ -824,7 +822,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for expense in regular_expenses
             ]
             keyboard.append([InlineKeyboardButton("Back", callback_data="back")])
-            reply_markup = InlineучуKeyboardMarkup(keyboard)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text("Select the regular expense to remove:", reply_markup=reply_markup)
             context.user_data['navigation_stack'].append("expense_regular")
         except Exception as e:
@@ -909,9 +907,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("Back", callback_data="back")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(f"Are
-
- you sure you want to remove {option}?", reply_markup=reply_markup)
+            await query.message.edit_text(f"Are you sure you want to remove {option}?", reply_markup=reply_markup)
             context.user_data['navigation_stack'].append("remove_expense_fixed")
     elif query.data.startswith("remove_income_select_"):
         income_id = query.data[len("remove_income_select_"):]
