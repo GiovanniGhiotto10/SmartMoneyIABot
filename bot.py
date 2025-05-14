@@ -29,7 +29,7 @@ def save_expense(user, amount, category, payment_method, date):
         with connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                INSERT INTO expenses (user, amount, category, payment_method, date)
+                INSERT INTO expenses ("user", amount, category, payment_method, date)
                 VALUES (%s, %s, %s, %s, %s)
                 ''', (user, amount, category, payment_method, date))
                 conn.commit()
@@ -44,7 +44,7 @@ def save_income(user, amount, description, date):
         with connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                INSERT INTO incomes (user, amount, description, date)
+                INSERT INTO incomes ("user", amount, description, date)
                 VALUES (%s, %s, %s, %s)
                 ''', (user, amount, description, date))
                 conn.commit()
@@ -61,7 +61,7 @@ def get_monthly_expenses(user, month, year):
                 cursor.execute('''
                 SELECT category, SUM(amount) as total
                 FROM expenses
-                WHERE user = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
+                WHERE "user" = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
                 GROUP BY category
                 ''', (user, month, year))
                 return cursor.fetchall()
@@ -77,7 +77,7 @@ def get_total_monthly_expenses(user, month, year):
                 cursor.execute('''
                 SELECT SUM(amount) as total
                 FROM expenses
-                WHERE user = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
+                WHERE "user" = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
                 ''', (user, month, year))
                 result = cursor.fetchone()
                 return result[0] if result[0] is not None else 0
@@ -93,7 +93,7 @@ def get_monthly_incomes(user, month, year):
                 cursor.execute('''
                 SELECT SUM(amount) as total
                 FROM incomes
-                WHERE user = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
+                WHERE "user" = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
                 ''', (user, month, year))
                 result = cursor.fetchone()
                 return result[0] if result[0] is not None else 0
@@ -109,7 +109,7 @@ def list_monthly_expenses(user, month, year):
                 cursor.execute('''
                 SELECT id, amount, category, payment_method, date
                 FROM expenses
-                WHERE user = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
+                WHERE "user" = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
                 ORDER BY date DESC
                 ''', (user, month, year))
                 return cursor.fetchall()
@@ -125,7 +125,7 @@ def list_monthly_incomes(user, month, year):
                 cursor.execute('''
                 SELECT id, amount, description, date
                 FROM incomes
-                WHERE user = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
+                WHERE "user" = %s AND EXTRACT(MONTH FROM date) = %s AND EXTRACT(YEAR FROM date) = %s
                 ORDER BY date DESC
                 ''', (user, month, year))
                 return cursor.fetchall()
@@ -138,18 +138,18 @@ def edit_expense(user, expense_id, amount=None, category=None, payment_method=No
     try:
         with connect() as conn:
             with conn.cursor() as cursor:
-                query = "UPDATE expenses SET "
+                query = 'UPDATE expenses SET '
                 params = []
                 if amount is not None:
-                    query += "amount = %s, "
+                    query += 'amount = %s, '
                     params.append(amount)
                 if category is not None:
-                    query += "category = %s, "
+                    query += 'category = %s, '
                     params.append(category)
                 if payment_method is not None:
-                    query += "payment_method = %s, "
+                    query += 'payment_method = %s, '
                     params.append(payment_method)
-                query = query.rstrip(", ") + " WHERE user = %s AND id = %s"
+                query = query.rstrip(', ') + ' WHERE "user" = %s AND id = %s'
                 params.extend([user, expense_id])
                 cursor.execute(query, params)
                 conn.commit()
@@ -163,15 +163,15 @@ def edit_income(user, income_id, amount=None, description=None):
     try:
         with connect() as conn:
             with conn.cursor() as cursor:
-                query = "UPDATE incomes SET "
+                query = 'UPDATE incomes SET '
                 params = []
                 if amount is not None:
-                    query += "amount = %s, "
+                    query += 'amount = %s, '
                     params.append(amount)
                 if description is not None:
-                    query += "description = %s, "
+                    query += 'description = %s, '
                     params.append(description)
-                query = query.rstrip(", ") + " WHERE user = %s AND id = %s"
+                query = query.rstrip(', ') + ' WHERE "user" = %s AND id = %s'
                 params.extend([user, income_id])
                 cursor.execute(query, params)
                 conn.commit()
@@ -187,7 +187,7 @@ def remove_expense(user, expense_id):
             with conn.cursor() as cursor:
                 cursor.execute('''
                 DELETE FROM expenses
-                WHERE user = %s AND id = %s
+                WHERE "user" = %s AND id = %s
                 ''', (user, expense_id))
                 conn.commit()
         logger.info(f"Expense ID {expense_id} removed by {user}")
@@ -202,7 +202,7 @@ def remove_income(user, income_id):
             with conn.cursor() as cursor:
                 cursor.execute('''
                 DELETE FROM incomes
-                WHERE user = %s AND id = %s
+                WHERE "user" = %s AND id = %s
                 ''', (user, income_id))
                 conn.commit()
         logger.info(f"Income ID {income_id} removed by {user}")
@@ -218,7 +218,7 @@ def get_limit(user):
                 cursor.execute('''
                 SELECT limit
                 FROM limits
-                WHERE user = %s
+                WHERE "user" = %s
                 ''', (user,))
                 result = cursor.fetchone()
                 return result[0] if result else None
@@ -232,9 +232,9 @@ def set_limit(user, limit):
         with connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
-                INSERT INTO limits (user, limit)
+                INSERT INTO limits ("user", limit)
                 VALUES (%s, %s)
-                ON CONFLICT (user)
+                ON CONFLICT ("user")
                 DO UPDATE SET limit = EXCLUDED.limit
                 ''', (user, limit))
                 conn.commit()
@@ -759,7 +759,7 @@ async def button_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.edit_text("No fixed expenses recorded to edit.", reply_markup=reply_markup)
                 return
             keyboard = [
-                [InlineKeyboardButton(f"ID {expense[0]} - ${expense[1]:.2f} - {exercise[2]} - {expense[3]}", callback_data=f"edit_expense_select_{expense[0]}")]
+                [InlineKeyboardButton(f"ID {expense[0]} - ${expense[1]:.2f} - {expense[2]} - {expense[3]}", callback_data=f"edit_expense_select_{expense[0]}")]
                 for expense in fixed_expenses
             ]
             keyboard.append([InlineKeyboardButton("Back", callback_data="back")])
